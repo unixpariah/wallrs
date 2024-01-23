@@ -15,8 +15,11 @@ use smithay_client_toolkit::{
     WaylandSource,
 };
 
-use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::{
+    cell::{Cell, RefCell},
+    thread,
+};
 
 default_environment!(Env,
     fields = [
@@ -48,14 +51,6 @@ impl Surface {
         layer_shell: &Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
         pool: AutoMemPool,
     ) -> Self {
-        let dimensions = with_output_info(&output, |info| {
-            (
-                info.modes[0].dimensions.0 as u32,
-                info.modes[0].dimensions.1 as u32,
-            )
-        })
-        .unwrap_or((0, 0));
-
         let layer_surface = layer_shell.get_layer_surface(
             &surface,
             Some(output),
@@ -97,7 +92,7 @@ impl Surface {
             layer_surface,
             next_render_event,
             pool,
-            dimensions,
+            dimensions: (0, 0),
         }
     }
 
@@ -106,10 +101,8 @@ impl Surface {
     fn handle_events(&mut self) -> bool {
         match self.next_render_event.take() {
             Some(RenderEvent::Closed) => true,
-            Some(RenderEvent::Configure {
-                width: _,
-                height: _,
-            }) => {
+            Some(RenderEvent::Configure { width, height }) => {
+                self.dimensions = (width, height);
                 self.draw();
                 false
             }
@@ -156,6 +149,8 @@ impl Drop for Surface {
 }
 
 pub fn set_from_buffer() {
+    // You have to commit to surface after setting the image
+    // Issue is you need access to Surface struct
     wayland();
 }
 
