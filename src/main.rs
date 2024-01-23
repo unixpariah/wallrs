@@ -51,14 +51,13 @@ impl Surface {
         let layer_surface = layer_shell.get_layer_surface(
             &surface,
             Some(output),
-            zwlr_layer_shell_v1::Layer::Overlay,
+            zwlr_layer_shell_v1::Layer::Background,
             "example".to_owned(),
         );
 
-        layer_surface.set_size(32, 32);
         // Anchor to the top left corner of the output
-        layer_surface
-            .set_anchor(zwlr_layer_surface_v1::Anchor::Top | zwlr_layer_surface_v1::Anchor::Left);
+        layer_surface.set_anchor(zwlr_layer_surface_v1::Anchor::all());
+        layer_surface.set_exclusive_zone(-1);
 
         let next_render_event = Rc::new(Cell::new(None::<RenderEvent>));
         let next_render_event_handle = Rc::clone(&next_render_event);
