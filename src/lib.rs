@@ -33,7 +33,7 @@ enum RenderEvent {
     Closed,
 }
 
-struct Surface {
+pub struct Surface {
     surface: wl_surface::WlSurface,
     layer_surface: Main<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1>,
     next_render_event: Rc<Cell<Option<RenderEvent>>>,
@@ -48,6 +48,14 @@ impl Surface {
         layer_shell: &Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
         pool: AutoMemPool,
     ) -> Self {
+        let dimensions = with_output_info(&output, |info| {
+            (
+                info.modes[0].dimensions.0 as u32,
+                info.modes[0].dimensions.1 as u32,
+            )
+        })
+        .unwrap_or((0, 0));
+
         let layer_surface = layer_shell.get_layer_surface(
             &surface,
             Some(output),
@@ -89,7 +97,7 @@ impl Surface {
             layer_surface,
             next_render_event,
             pool,
-            dimensions: (0, 0),
+            dimensions,
         }
     }
 
@@ -98,11 +106,11 @@ impl Surface {
     fn handle_events(&mut self) -> bool {
         match self.next_render_event.take() {
             Some(RenderEvent::Closed) => true,
-            Some(RenderEvent::Configure { width, height }) => {
-                if self.dimensions != (width, height) {
-                    self.dimensions = (width, height);
-                    self.draw();
-                }
+            Some(RenderEvent::Configure {
+                width: _,
+                height: _,
+            }) => {
+                self.draw();
                 false
             }
             None => false,
@@ -147,7 +155,11 @@ impl Drop for Surface {
     }
 }
 
-fn main() {
+pub fn set_from_buffer() {
+    wayland();
+}
+
+fn wayland() {
     let (env, display, queue) =
         new_default_environment!(Env, fields = [layer_shell: SimpleGlobal::new(),])
             .expect("Initial roundtrip failed!");
