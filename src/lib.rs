@@ -1,4 +1,4 @@
-use image::{imageops, DynamicImage, ImageBuffer, Rgba};
+use image::{imageops, DynamicImage};
 use smithay_client_toolkit::{
     default_environment,
     environment::SimpleGlobal,
@@ -37,27 +37,35 @@ enum RenderEvent {
     Closed,
 }
 
-pub struct Surface {
+pub struct Surface<T> {
     surface: wl_surface::WlSurface,
     layer_surface: Main<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1>,
     next_render_event: Rc<Cell<Option<RenderEvent>>>,
     pool: AutoMemPool,
     dimensions: (u32, u32),
-    image: ImageBuffer<Rgba<u8>, Vec<u8>>,
+    image: T,
 }
 
-impl Surface {
+impl<T> Surface<T>
+where
+    T: Send + Clone + 'static,
+    DynamicImage: From<T>,
+{
     fn new(
         output: &wl_output::WlOutput,
         surface: wl_surface::WlSurface,
         layer_shell: &Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
         pool: AutoMemPool,
-        image: ImageBuffer<Rgba<u8>, Vec<u8>>,
-    ) -> Self {
+        image: T,
+    ) -> Self
+    where
+        T: Send + Clone + 'static,
+        DynamicImage: From<T>,
+    {
         let layer_surface = layer_shell.get_layer_surface(
             &surface,
             Some(output),
-            zwlr_layer_shell_v1::Layer::Background,
+            zwlr_layer_shell_v1::Layer::Overlay,
             "example".to_owned(),
         );
 
@@ -154,20 +162,28 @@ impl Surface {
     }
 }
 
-impl Drop for Surface {
+impl<T> Drop for Surface<T> {
     fn drop(&mut self) {
         self.layer_surface.destroy();
         self.surface.destroy();
     }
 }
 
-pub fn init(image: ImageBuffer<Rgba<u8>, Vec<u8>>) {
+pub fn init<T>(image: T)
+where
+    T: Send + Clone + 'static,
+    DynamicImage: From<T>,
+{
     thread::spawn(move || {
         wayland(image);
     });
 }
 
-fn wayland(image: ImageBuffer<Rgba<u8>, Vec<u8>>) {
+fn wayland<T>(image: T)
+where
+    T: Send + Clone + 'static,
+    DynamicImage: From<T>,
+{
     let (env, display, queue) =
         new_default_environment!(Env, fields = [layer_shell: SimpleGlobal::new(),])
             .expect("Initial roundtrip failed!");
