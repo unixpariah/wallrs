@@ -1,3 +1,4 @@
+use image::{imageops, DynamicImage, ImageBuffer, Rgba};
 use smithay_client_toolkit::{
     default_environment,
     environment::SimpleGlobal,
@@ -15,9 +16,9 @@ use smithay_client_toolkit::{
     WaylandSource,
 };
 
-use std::rc::Rc;
 use std::{
     cell::{Cell, RefCell},
+    rc::Rc,
     thread,
 };
 
@@ -42,6 +43,7 @@ pub struct Surface {
     next_render_event: Rc<Cell<Option<RenderEvent>>>,
     pool: AutoMemPool,
     dimensions: (u32, u32),
+    image: ImageBuffer<Rgba<u8>, Vec<u8>>,
 }
 
 impl Surface {
@@ -50,6 +52,7 @@ impl Surface {
         surface: wl_surface::WlSurface,
         layer_shell: &Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
         pool: AutoMemPool,
+        image: ImageBuffer<Rgba<u8>, Vec<u8>>,
     ) -> Self {
         let layer_surface = layer_shell.get_layer_surface(
             &surface,
@@ -93,6 +96,7 @@ impl Surface {
             next_render_event,
             pool,
             dimensions: (0, 0),
+            image,
         }
     }
 
@@ -123,13 +127,22 @@ impl Surface {
             .buffer(width, height, stride, wl_shm::Format::Argb8888)
             .unwrap();
 
-        for dst_pixel in canvas.chunks_exact_mut(4) {
-            let pixel = 0xff00ff00u32.to_ne_bytes();
-            dst_pixel[0] = pixel[0];
-            dst_pixel[1] = pixel[1];
-            dst_pixel[2] = pixel[2];
-            dst_pixel[3] = pixel[3];
+        let img = DynamicImage::from(self.image.clone()).resize_to_fill(
+            width as u32,
+            height as u32,
+            imageops::FilterType::Lanczos3,
+        );
+
+        let resized_image = &mut *img
+            .resize_to_fill(width as u32, height as u32, imageops::FilterType::Lanczos3)
+            .to_rgba8()
+            .to_vec();
+
+        for pixel in resized_image.chunks_exact_mut(4) {
+            pixel.swap(0, 2)
         }
+
+        canvas.copy_from_slice(resized_image);
 
         // Attach the buffer to the surface and mark the entire surface as damaged
         self.surface.attach(Some(&buffer), 0, 0);
@@ -148,13 +161,13 @@ impl Drop for Surface {
     }
 }
 
-pub fn set_from_buffer() {
-    // You have to commit to surface after setting the image
-    // Issue is you need access to Surface struct
-    wayland();
+pub fn init(image: ImageBuffer<Rgba<u8>, Vec<u8>>) {
+    thread::spawn(move || {
+        wayland(image);
+    });
 }
 
-fn wayland() {
+fn wayland(image: ImageBuffer<Rgba<u8>, Vec<u8>>) {
     let (env, display, queue) =
         new_default_environment!(Env, fields = [layer_shell: SimpleGlobal::new(),])
             .expect("Initial roundtrip failed!");
@@ -178,7 +191,7 @@ fn wayland() {
                 .expect("Failed to create a memory pool!");
             (*surfaces_handle.borrow_mut()).push((
                 info.id,
-                Surface::new(&output, surface, &layer_shell.clone(), pool),
+                Surface::new(&output, surface, &layer_shell.clone(), pool, image.clone()),
             ));
         }
     };
@@ -213,3 +226,4 @@ fn wayland() {
         event_loop.dispatch(None, &mut ()).unwrap();
     }
 }
+
