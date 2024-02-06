@@ -43,7 +43,6 @@ pub struct Surface {
     next_render_event: Rc<Cell<Option<RenderEvent>>>,
     pool: AutoMemPool,
     dimensions: (u32, u32),
-    image: DynamicImage,
 }
 
 impl Surface {
@@ -52,7 +51,6 @@ impl Surface {
         surface: wl_surface::WlSurface,
         layer_shell: &Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
         pool: AutoMemPool,
-        image: DynamicImage,
     ) -> Self {
         let layer_surface = layer_shell.get_layer_surface(
             &surface,
@@ -96,25 +94,24 @@ impl Surface {
             next_render_event,
             pool,
             dimensions: (0, 0),
-            image,
         }
     }
 
     /// Handles any events that have occurred since the last call, redrawing if needed.
     /// Returns true if the surface should be dropped.
-    fn handle_events(&mut self) -> bool {
+    fn handle_events(&mut self, image: &DynamicImage) -> bool {
         match self.next_render_event.take() {
             Some(RenderEvent::Closed) => true,
             Some(RenderEvent::Configure { width, height }) => {
                 self.dimensions = (width, height);
-                self.draw();
+                self.draw(image);
                 false
             }
             None => false,
         }
     }
 
-    fn draw(&mut self) {
+    fn draw(&mut self, image: &DynamicImage) {
         let stride = 4 * self.dimensions.0 as i32;
         let width = self.dimensions.0 as i32;
         let height = self.dimensions.1 as i32;
@@ -127,8 +124,7 @@ impl Surface {
             .buffer(width, height, stride, wl_shm::Format::Argb8888)
             .unwrap();
 
-        let img: Vec<u8> = self
-            .image
+        let img: Vec<u8> = image
             .resize_to_fill(width as u32, height as u32, imageops::FilterType::Lanczos3)
             .to_rgba8()
             .to_vec()
@@ -187,7 +183,7 @@ fn wayland(image: DynamicImage) {
                 .expect("Failed to create a memory pool!");
             (*surfaces_handle.borrow_mut()).push((
                 info.id,
-                Surface::new(&output, surface, &layer_shell.clone(), pool, image.clone()),
+                Surface::new(&output, surface, &layer_shell.clone(), pool),
             ));
         }
     };
@@ -215,7 +211,7 @@ fn wayland(image: DynamicImage) {
             // Using a new scope so that `surfaces` reference gets dropped
             surfaces
                 .borrow_mut()
-                .retain_mut(|surface| !surface.1.handle_events());
+                .retain_mut(|surface| !surface.1.handle_events(&image));
         }
 
         display.flush().unwrap();
