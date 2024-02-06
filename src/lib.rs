@@ -19,7 +19,6 @@ use smithay_client_toolkit::{
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
-    thread,
 };
 
 default_environment!(Env,
@@ -37,31 +36,23 @@ enum RenderEvent {
     Closed,
 }
 
-pub struct Surface<T> {
+pub struct Surface {
     surface: wl_surface::WlSurface,
     layer_surface: Main<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1>,
     next_render_event: Rc<Cell<Option<RenderEvent>>>,
     pool: AutoMemPool,
     dimensions: (u32, u32),
-    image: T,
+    image: DynamicImage,
 }
 
-impl<T> Surface<T>
-where
-    T: Send + Clone + 'static,
-    DynamicImage: From<T>,
-{
+impl Surface {
     fn new(
         output: &wl_output::WlOutput,
         surface: wl_surface::WlSurface,
         layer_shell: &Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
         pool: AutoMemPool,
-        image: T,
-    ) -> Self
-    where
-        T: Send + Clone + 'static,
-        DynamicImage: From<T>,
-    {
+        image: DynamicImage,
+    ) -> Self {
         let layer_surface = layer_shell.get_layer_surface(
             &surface,
             Some(output),
@@ -162,28 +153,22 @@ where
     }
 }
 
-impl<T> Drop for Surface<T> {
+impl Drop for Surface {
     fn drop(&mut self) {
         self.layer_surface.destroy();
         self.surface.destroy();
     }
 }
 
-pub fn init<T>(image: T)
+pub fn set_from_memory<T>(image: T)
 where
-    T: Send + Clone + 'static,
     DynamicImage: From<T>,
 {
-    thread::spawn(move || {
-        wayland(image);
-    });
+    let image = DynamicImage::from(image);
+    wayland(image);
 }
 
-fn wayland<T>(image: T)
-where
-    T: Send + Clone + 'static,
-    DynamicImage: From<T>,
-{
+fn wayland(image: DynamicImage) {
     let (env, display, queue) =
         new_default_environment!(Env, fields = [layer_shell: SimpleGlobal::new(),])
             .expect("Initial roundtrip failed!");
@@ -242,4 +227,3 @@ where
         event_loop.dispatch(None, &mut ()).unwrap();
     }
 }
-
