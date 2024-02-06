@@ -19,6 +19,7 @@ use smithay_client_toolkit::{
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
+    thread,
 };
 
 default_environment!(Env,
@@ -126,29 +127,23 @@ impl Surface {
             .buffer(width, height, stride, wl_shm::Format::Argb8888)
             .unwrap();
 
-        let img = DynamicImage::from(self.image.clone()).resize_to_fill(
-            width as u32,
-            height as u32,
-            imageops::FilterType::Lanczos3,
-        );
-
-        let resized_image = &mut *img
+        let img: Vec<u8> = self
+            .image
             .resize_to_fill(width as u32, height as u32, imageops::FilterType::Lanczos3)
             .to_rgba8()
-            .to_vec();
+            .to_vec()
+            .chunks_exact_mut(4)
+            .flat_map(|pixel| {
+                pixel.swap(0, 2);
+                pixel.to_vec()
+            })
+            .collect();
 
-        for pixel in resized_image.chunks_exact_mut(4) {
-            pixel.swap(0, 2)
-        }
+        canvas.copy_from_slice(&img);
 
-        canvas.copy_from_slice(resized_image);
-
-        // Attach the buffer to the surface and mark the entire surface as damaged
         self.surface.attach(Some(&buffer), 0, 0);
         self.surface
             .damage_buffer(0, 0, width as i32, height as i32);
-
-        // Finally, commit the surface
         self.surface.commit();
     }
 }
@@ -162,10 +157,11 @@ impl Drop for Surface {
 
 pub fn set_from_memory<T>(image: T)
 where
-    DynamicImage: From<T>,
+    T: Into<DynamicImage> + Send + 'static,
 {
-    let image = DynamicImage::from(image);
-    wayland(image);
+    thread::spawn(|| {
+        wayland(image.into());
+    });
 }
 
 fn wayland(image: DynamicImage) {
@@ -179,13 +175,12 @@ fn wayland(image: DynamicImage) {
 
     let env_handle = env.clone();
     let surfaces_handle = Rc::clone(&surfaces);
-    let output_handler = move |output: wl_output::WlOutput, info: &OutputInfo| {
-        if info.obsolete {
-            // an output has been removed, release it
+    let output_handler = move |output: wl_output::WlOutput, info: &OutputInfo| match info.obsolete {
+        true => {
             surfaces_handle.borrow_mut().retain(|(i, _)| *i != info.id);
             output.release();
-        } else {
-            // an output has been created, construct a surface for it
+        }
+        false => {
             let surface = env_handle.create_surface().detach();
             let pool = env_handle
                 .create_auto_pool()
