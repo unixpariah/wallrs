@@ -15,12 +15,14 @@ use smithay_client_toolkit::{
     shm::AutoMemPool,
     WaylandSource,
 };
-
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
+    sync::Once,
     thread,
 };
+
+static START: Once = Once::new();
 
 default_environment!(Env,
     fields = [
@@ -55,11 +57,9 @@ impl Surface {
         let layer_surface = layer_shell.get_layer_surface(
             &surface,
             Some(output),
-            zwlr_layer_shell_v1::Layer::Overlay,
+            zwlr_layer_shell_v1::Layer::Background,
             "example".to_owned(),
         );
-
-        // Anchor to the top left corner of the output
         layer_surface.set_anchor(zwlr_layer_surface_v1::Anchor::all());
         layer_surface.set_exclusive_zone(-1);
 
@@ -85,7 +85,6 @@ impl Surface {
             }
         });
 
-        // Commit so that the server will send a configure event
         surface.commit();
 
         Self {
@@ -97,8 +96,6 @@ impl Surface {
         }
     }
 
-    /// Handles any events that have occurred since the last call, redrawing if needed.
-    /// Returns true if the surface should be dropped.
     fn handle_events(&mut self, image: &DynamicImage) -> bool {
         match self.next_render_event.take() {
             Some(RenderEvent::Closed) => true,
@@ -124,7 +121,7 @@ impl Surface {
             .buffer(width, height, stride, wl_shm::Format::Argb8888)
             .unwrap();
 
-        let img: Vec<u8> = image
+        let image: Vec<u8> = image
             .resize_to_fill(width as u32, height as u32, imageops::FilterType::Lanczos3)
             .to_rgba8()
             .to_vec()
@@ -135,7 +132,7 @@ impl Surface {
             })
             .collect();
 
-        canvas.copy_from_slice(&img);
+        canvas.copy_from_slice(&image);
 
         self.surface.attach(Some(&buffer), 0, 0);
         self.surface
@@ -155,8 +152,10 @@ pub fn set_from_memory<T>(image: T)
 where
     T: Into<DynamicImage> + Send + 'static,
 {
-    thread::spawn(|| {
-        wayland(image.into());
+    START.call_once(|| {
+        thread::spawn(|| {
+            wayland(image.into());
+        });
     });
 }
 
@@ -188,15 +187,12 @@ fn wayland(image: DynamicImage) {
         }
     };
 
-    // Process currently existing outputs
     for output in env.get_all_outputs() {
         if let Some(info) = with_output_info(&output, Clone::clone) {
             output_handler(output, &info);
         }
     }
 
-    // Setup a listener for changes
-    // The listener will live for as long as we keep this handle alive
     let _listner_handle =
         env.listen_for_outputs(move |output, info, _| output_handler(output, info));
 
@@ -208,7 +204,6 @@ fn wayland(image: DynamicImage) {
 
     loop {
         {
-            // Using a new scope so that `surfaces` reference gets dropped
             surfaces
                 .borrow_mut()
                 .retain_mut(|surface| !surface.1.handle_events(&image));
