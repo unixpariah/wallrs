@@ -18,9 +18,16 @@ use smithay_client_toolkit::{
     shm::AutoMemPool,
     WaylandSource,
 };
-use std::{cell::Cell, rc::Rc, sync::Once, thread};
+use std::{
+    cell::Cell,
+    mem,
+    rc::Rc,
+    sync::{mpsc, Mutex, Once},
+    thread,
+};
 
 static START: Once = Once::new();
+static mut SENDER: Mutex<Option<mpsc::Sender<DynamicImage>>> = Mutex::new(None);
 
 default_environment!(Env,
     fields = [
@@ -40,9 +47,9 @@ enum RenderEvent {
 pub struct Surface {
     surface: wl_surface::WlSurface,
     layer_surface: Main<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1>,
-    next_render_event: Rc<Cell<Option<RenderEvent>>>,
     pool: AutoMemPool,
     dimensions: (u32, u32),
+    image: Option<DynamicImage>,
 }
 
 impl Surface {
@@ -51,6 +58,7 @@ impl Surface {
         surface: wl_surface::WlSurface,
         layer_shell: &Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
         pool: AutoMemPool,
+        image: Option<DynamicImage>,
     ) -> Self {
         let (width, height) = with_output_info(output, |info| {
             let dimensions = info.modes[0].dimensions;
@@ -96,32 +104,22 @@ impl Surface {
         Self {
             surface,
             layer_surface,
-            next_render_event,
             pool,
             dimensions: (width, height),
+            image,
         }
     }
 
-    fn handle_events(&mut self, image: &DynamicImage) -> bool {
-        match self.next_render_event.take() {
-            Some(RenderEvent::Closed) => true,
-            Some(RenderEvent::Redraw) => {
-                self.draw(&image);
-                false
-            }
-            None => false,
-        }
-    }
+    fn draw(&mut self) {
+        if let Some(image) = &self.image {
+            let stride = 4 * self.dimensions.0 as i32;
+            let width = self.dimensions.0 as i32;
+            let height = self.dimensions.1 as i32;
 
-    fn draw(&mut self, image: &DynamicImage) {
-        let stride = 4 * self.dimensions.0 as i32;
-        let width = self.dimensions.0 as i32;
-        let height = self.dimensions.1 as i32;
-
-        if let Ok((canvas, buffer)) =
-            self.pool
+            let (canvas, buffer) = self
+                .pool
                 .buffer(width, height, stride, wl_shm::Format::Argb8888)
-        {
+                .unwrap();
             let image: Vec<u8> = image
                 .resize_to_fill(width as u32, height as u32, imageops::FilterType::Lanczos3)
                 .to_rgba8()
@@ -134,6 +132,9 @@ impl Surface {
                 .collect();
 
             canvas.copy_from_slice(&image);
+
+            self.image = None;
+            mem::drop(image);
 
             self.surface.attach(Some(&buffer), 0, 0);
             self.surface
@@ -155,13 +156,23 @@ where
     T: Into<DynamicImage> + Send + 'static,
 {
     START.call_once(|| {
+        let (tx, rx) = mpsc::channel();
+        unsafe {
+            let mut sender = SENDER.lock().unwrap();
+            *sender = Some(tx);
+        }
         thread::spawn(|| {
-            wayland(image.into());
+            wayland(rx);
         });
     });
+
+    unsafe {
+        let sender = SENDER.lock().unwrap();
+        sender.as_ref().unwrap().send(image.into()).unwrap();
+    }
 }
 
-fn wayland(image: DynamicImage) {
+fn wayland(rx: mpsc::Receiver<DynamicImage>) {
     let (env, display, queue) =
         new_default_environment!(Env, fields = [layer_shell: SimpleGlobal::new(),])
             .expect("Initial roundtrip failed!");
@@ -173,17 +184,18 @@ fn wayland(image: DynamicImage) {
 
     let layer_shell = env.require_global::<zwlr_layer_shell_v1::ZwlrLayerShellV1>();
     let output = env.get_all_outputs().first().unwrap().to_owned();
-    let mut surface_wrapper = Surface::new(&output, surface, &layer_shell.clone(), pool);
+    let mut surface_wrapper = Surface::new(&output, surface, &layer_shell.clone(), pool, None);
     let mut event_loop = calloop::EventLoop::<()>::try_new().unwrap();
     WaylandSource::new(queue)
         .quick_insert(event_loop.handle())
         .unwrap();
 
     loop {
-        if surface_wrapper.handle_events(&image) {
-            break;
-        }
         display.flush().unwrap();
         event_loop.dispatch(None, &mut ()).unwrap();
+        if let Ok(img) = rx.recv() {
+            surface_wrapper.image = Some(img);
+            surface_wrapper.draw();
+        }
     }
 }
