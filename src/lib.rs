@@ -3,6 +3,7 @@ use smithay_client_toolkit::{
     default_environment,
     environment::SimpleGlobal,
     new_default_environment,
+    output::with_output_info,
     reexports::{
         calloop,
         client::{
@@ -32,7 +33,7 @@ default_environment!(Env,
 
 #[derive(PartialEq, Copy, Clone)]
 enum RenderEvent {
-    Configure { width: u32, height: u32 },
+    Redraw,
     Closed,
 }
 
@@ -51,6 +52,11 @@ impl Surface {
         layer_shell: &Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
         pool: AutoMemPool,
     ) -> Self {
+        let (width, height) = with_output_info(output, |info| {
+            let dimensions = info.modes[0].dimensions;
+            (dimensions.0 as u32, dimensions.1 as u32)
+        })
+        .unwrap();
         let layer_surface = layer_shell.get_layer_surface(
             &surface,
             Some(output),
@@ -59,7 +65,9 @@ impl Surface {
         );
         layer_surface.set_anchor(zwlr_layer_surface_v1::Anchor::all());
         layer_surface.set_exclusive_zone(-1);
+        layer_surface.set_margin(0, 0, 0, 0);
         layer_surface.set_keyboard_interactivity(KeyboardInteractivity::None);
+        layer_surface.set_size(width, height);
 
         let next_render_event = Rc::new(Cell::new(None::<RenderEvent>));
         let next_render_event_handle = Rc::clone(&next_render_event);
@@ -71,13 +79,13 @@ impl Surface {
                 (
                     zwlr_layer_surface_v1::Event::Configure {
                         serial,
-                        width,
-                        height,
+                        width: _,
+                        height: _,
                     },
                     next,
                 ) if next != Some(RenderEvent::Closed) => {
                     layer_surface.ack_configure(serial);
-                    next_render_event_handle.set(Some(RenderEvent::Configure { width, height }));
+                    next_render_event_handle.set(Some(RenderEvent::Redraw));
                 }
                 (_, _) => {}
             }
@@ -90,15 +98,14 @@ impl Surface {
             layer_surface,
             next_render_event,
             pool,
-            dimensions: (0, 0),
+            dimensions: (width, height),
         }
     }
 
     fn handle_events(&mut self, image: &DynamicImage) -> bool {
         match self.next_render_event.take() {
             Some(RenderEvent::Closed) => true,
-            Some(RenderEvent::Configure { width, height }) => {
-                self.dimensions = (width, height);
+            Some(RenderEvent::Redraw) => {
                 self.draw(&image);
                 false
             }
@@ -111,31 +118,28 @@ impl Surface {
         let width = self.dimensions.0 as i32;
         let height = self.dimensions.1 as i32;
 
-        // Note: unwrap() is only used here in the interest of simplicity of the example.
-        // A "real" application should handle the case where both pools are still in use by the
-        // compositor.
-        let (canvas, buffer) = self
-            .pool
-            .buffer(width, height, stride, wl_shm::Format::Argb8888)
-            .unwrap();
+        if let Ok((canvas, buffer)) =
+            self.pool
+                .buffer(width, height, stride, wl_shm::Format::Argb8888)
+        {
+            let image: Vec<u8> = image
+                .resize_to_fill(width as u32, height as u32, imageops::FilterType::Lanczos3)
+                .to_rgba8()
+                .to_vec()
+                .chunks_exact_mut(4)
+                .flat_map(|pixel| {
+                    pixel.swap(0, 2);
+                    pixel.to_vec()
+                })
+                .collect();
 
-        let image: Vec<u8> = image
-            .resize_to_fill(width as u32, height as u32, imageops::FilterType::Lanczos3)
-            .to_rgba8()
-            .to_vec()
-            .chunks_exact_mut(4)
-            .flat_map(|pixel| {
-                pixel.swap(0, 2);
-                pixel.to_vec()
-            })
-            .collect();
+            canvas.copy_from_slice(&image);
 
-        canvas.copy_from_slice(&image);
-
-        self.surface.attach(Some(&buffer), 0, 0);
-        self.surface
-            .damage_buffer(0, 0, width as i32, height as i32);
-        self.surface.commit();
+            self.surface.attach(Some(&buffer), 0, 0);
+            self.surface
+                .damage_buffer(0, 0, width as i32, height as i32);
+            self.surface.commit();
+        }
     }
 }
 
@@ -168,12 +172,9 @@ fn wayland(image: DynamicImage) {
         .expect("Failed to create a memory pool!");
 
     let layer_shell = env.require_global::<zwlr_layer_shell_v1::ZwlrLayerShellV1>();
-
     let output = env.get_all_outputs().first().unwrap().to_owned();
     let mut surface_wrapper = Surface::new(&output, surface, &layer_shell.clone(), pool);
-
     let mut event_loop = calloop::EventLoop::<()>::try_new().unwrap();
-
     WaylandSource::new(queue)
         .quick_insert(event_loop.handle())
         .unwrap();
@@ -182,7 +183,6 @@ fn wayland(image: DynamicImage) {
         if surface_wrapper.handle_events(&image) {
             break;
         }
-
         display.flush().unwrap();
         event_loop.dispatch(None, &mut ()).unwrap();
     }
