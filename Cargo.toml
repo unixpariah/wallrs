@@ -2,7 +2,7 @@
 name = "wlrs"
 version = "0.1.0"
 edition = "2021"
-description = "/ˈwɑːl.rəs/ - a wallpaper manager"
+description = "/ˈwɑːl.rəs/ - Wallpaper management library"
 license = "MIT"
 repository = "https://github.com/unixpariah/wlrs"
 

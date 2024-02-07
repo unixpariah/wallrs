@@ -3,24 +3,21 @@ use smithay_client_toolkit::{
     default_environment,
     environment::SimpleGlobal,
     new_default_environment,
-    output::{with_output_info, OutputInfo},
     reexports::{
         calloop,
-        client::protocol::{wl_output, wl_shm, wl_surface},
-        client::{Attached, Main},
+        client::{
+            protocol::{wl_output, wl_shm, wl_surface},
+            Attached, Main,
+        },
         protocols::wlr::unstable::layer_shell::v1::client::{
-            zwlr_layer_shell_v1, zwlr_layer_surface_v1,
+            zwlr_layer_shell_v1,
+            zwlr_layer_surface_v1::{self, KeyboardInteractivity},
         },
     },
     shm::AutoMemPool,
     WaylandSource,
 };
-use std::{
-    cell::{Cell, RefCell},
-    rc::Rc,
-    sync::Once,
-    thread,
-};
+use std::{cell::Cell, rc::Rc, sync::Once, thread};
 
 static START: Once = Once::new();
 
@@ -58,10 +55,11 @@ impl Surface {
             &surface,
             Some(output),
             zwlr_layer_shell_v1::Layer::Background,
-            "example".to_owned(),
+            "wlrs".to_owned(),
         );
         layer_surface.set_anchor(zwlr_layer_surface_v1::Anchor::all());
         layer_surface.set_exclusive_zone(-1);
+        layer_surface.set_keyboard_interactivity(KeyboardInteractivity::None);
 
         let next_render_event = Rc::new(Cell::new(None::<RenderEvent>));
         let next_render_event_handle = Rc::clone(&next_render_event);
@@ -101,7 +99,7 @@ impl Surface {
             Some(RenderEvent::Closed) => true,
             Some(RenderEvent::Configure { width, height }) => {
                 self.dimensions = (width, height);
-                self.draw(image);
+                self.draw(&image);
                 false
             }
             None => false,
@@ -164,37 +162,15 @@ fn wayland(image: DynamicImage) {
         new_default_environment!(Env, fields = [layer_shell: SimpleGlobal::new(),])
             .expect("Initial roundtrip failed!");
 
-    let surfaces = Rc::new(RefCell::new(Vec::new()));
+    let surface = env.create_surface().detach();
+    let pool = env
+        .create_auto_pool()
+        .expect("Failed to create a memory pool!");
 
     let layer_shell = env.require_global::<zwlr_layer_shell_v1::ZwlrLayerShellV1>();
 
-    let env_handle = env.clone();
-    let surfaces_handle = Rc::clone(&surfaces);
-    let output_handler = move |output: wl_output::WlOutput, info: &OutputInfo| match info.obsolete {
-        true => {
-            surfaces_handle.borrow_mut().retain(|(i, _)| *i != info.id);
-            output.release();
-        }
-        false => {
-            let surface = env_handle.create_surface().detach();
-            let pool = env_handle
-                .create_auto_pool()
-                .expect("Failed to create a memory pool!");
-            (*surfaces_handle.borrow_mut()).push((
-                info.id,
-                Surface::new(&output, surface, &layer_shell.clone(), pool),
-            ));
-        }
-    };
-
-    for output in env.get_all_outputs() {
-        if let Some(info) = with_output_info(&output, Clone::clone) {
-            output_handler(output, &info);
-        }
-    }
-
-    let _listner_handle =
-        env.listen_for_outputs(move |output, info, _| output_handler(output, info));
+    let output = env.get_all_outputs().first().unwrap().to_owned();
+    let mut surface_wrapper = Surface::new(&output, surface, &layer_shell.clone(), pool);
 
     let mut event_loop = calloop::EventLoop::<()>::try_new().unwrap();
 
@@ -203,10 +179,8 @@ fn wayland(image: DynamicImage) {
         .unwrap();
 
     loop {
-        {
-            surfaces
-                .borrow_mut()
-                .retain_mut(|surface| !surface.1.handle_events(&image));
+        if surface_wrapper.handle_events(&image) {
+            break;
         }
 
         display.flush().unwrap();
