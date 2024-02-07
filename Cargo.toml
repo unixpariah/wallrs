@@ -5,6 +5,8 @@ edition = "2021"
 description = "/ˈwɑːl.rəs/ - Wallpaper management library"
 license = "MIT"
 repository = "https://github.com/unixpariah/wlrs"
+readme = "README.md"
+authors = ["unixpariah"]
 
 [dependencies]
 image = "0.24.8"

@@ -20,7 +20,8 @@ use smithay_client_toolkit::{
 };
 use std::{
     cell::Cell,
-    mem,
+    env, mem,
+    path::Path,
     rc::Rc,
     sync::{mpsc, Mutex, Once},
     thread,
@@ -151,6 +152,33 @@ impl Drop for Surface {
     }
 }
 
+pub fn set_from_path<T>(path: T)
+where
+    T: AsRef<Path>,
+{
+    let image = image::open(path).expect("Failed to open image");
+    START.call_once(|| {
+        let (tx, rx) = mpsc::channel();
+        unsafe {
+            let mut sender = SENDER.lock().unwrap();
+            *sender = Some(tx);
+        }
+        thread::spawn(
+            || match env::var("XDG_SESSION_TYPE").unwrap_or_default().as_str() {
+                "wayland" => {
+                    wayland(rx);
+                }
+                _ => panic!("Currently only wayland is supported"),
+            },
+        );
+    });
+
+    unsafe {
+        let sender = SENDER.lock().unwrap();
+        sender.as_ref().unwrap().send(image.into()).unwrap();
+    }
+}
+
 pub fn set_from_memory<T>(image: T)
 where
     T: Into<DynamicImage> + Send + 'static,
@@ -161,9 +189,14 @@ where
             let mut sender = SENDER.lock().unwrap();
             *sender = Some(tx);
         }
-        thread::spawn(|| {
-            wayland(rx);
-        });
+        thread::spawn(
+            || match env::var("XDG_SESSION_TYPE").unwrap_or_default().as_str() {
+                "wayland" => {
+                    wayland(rx);
+                }
+                _ => panic!("Currently only wayland is supported"),
+            },
+        );
     });
 
     unsafe {
