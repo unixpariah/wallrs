@@ -2,7 +2,7 @@
 
 Wallpaper management library
 
-Supported environments:
+## Supported environments:
 
 - Wayland
 
@@ -15,7 +15,7 @@ use wlrs::set_from_memory;
 
 fn main() {
   let wallpaper = image::open("wallpaper.jpg").unwrap();
-  set_from_memory(wallpaper);
+  set_from_memory(wallpaper).unwrap();
 }
 ```
 
@@ -25,6 +25,6 @@ Setting from file path:
 use wlrs::set_from_memory;
 
 fn main() {
-  set_from_path("wallpaper.jpg");
+  set_from_path("wallpaper.jpg").unwrap();
 }
 ```
