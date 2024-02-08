@@ -22,7 +22,7 @@ fn main() {
 Setting from file path:
 
 ```rust
-use wlrs::set_from_memory;
+use wlrs::set_from_path;
 
 fn main() {
   set_from_path("wallpaper.jpg").unwrap();
