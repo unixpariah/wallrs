@@ -35,7 +35,7 @@ enum RenderEvent {
     Kill,
 }
 
-pub struct Surface {
+struct Surface {
     surface: wl_surface::WlSurface,
     layer_surface: Main<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1>,
     pool: AutoMemPool,

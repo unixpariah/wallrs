@@ -24,7 +24,7 @@ where
 
 pub fn set_from_memory<T>(image: T) -> Result<(), Box<dyn Error>>
 where
-    T: Into<DynamicImage> + Send + 'static,
+    T: Into<DynamicImage>,
 {
     START.call_once(|| {
         let (tx, rx) = mpsc::channel();
