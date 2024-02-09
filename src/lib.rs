@@ -45,8 +45,7 @@ where
                 }
             }
             Ok(())
-        })
-        .join();
+        });
     });
 
     unsafe {
