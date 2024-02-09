@@ -1,6 +1,6 @@
-# WLRS /wɔːlrəs/ 
+# WLRS /wɔːlrəs/ [![crate](https://img.shields.io/crates/v/wlrs.svg)](https://crates.io/crates/wlrs) [![docs](https://docs.rs/wlrs/badge.svg)](https://docs.rs/wlrs/latest/wlrs/index.html)
 
-Wallpaper management library
+Rust library for managing wallpapers
 
 ## Supported environments:
 

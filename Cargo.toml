@@ -1,12 +1,14 @@
 [package]
 name = "wlrs"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
-description = "/ˈwɑːl.rəs/ - Wallpaper management library"
+description = "Rust library for managing wallpapers"
 license = "MIT"
 repository = "https://github.com/unixpariah/wlrs"
 readme = "README.md"
 authors = ["unixpariah"]
+keywords = ["desktop", "wallpaper", "background"]
+categories = ["api-bindings"]
 
 [dependencies]
 image = "0.24.8"
