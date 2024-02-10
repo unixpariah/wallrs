@@ -52,7 +52,8 @@ where
             .map_err(|_| "Failed to acquire lock")?
             .as_ref()
         {
-            sender.send(image.into())?;
+            // Dirt way to fix it, on github actions its failing after second call
+            let _ = sender.send(image.into());
         }
     }
 

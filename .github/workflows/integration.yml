@@ -1,0 +1,31 @@
+name: Integration
+
+on:
+  push:
+    branches:
+    - main
+  pull_request:
+    branches:
+    - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Cargo cache
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo
+          key: cargo-stable
+
+      - name: Install system dependencies
+        run: sudo apt-get install libxkbcommon-dev libwayland-dev
+
+      - name: Run tests
+        run: cargo test -v
+
+

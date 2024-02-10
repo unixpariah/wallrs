@@ -41,14 +41,14 @@ fn test_integration() {
     make_test_imgs();
 
     set_images();
-    set_image_that_does_not_exist()
+    set_image_that_does_not_exist();
 }
 
 fn set_images() {
-    (0..3).for_each(|i| {
-        let img = image::open(TEST_IMGS[i]).unwrap();
+    TEST_IMGS.iter().for_each(|test_img| {
+        let img = image::open(test_img).unwrap();
         assert!(set_from_memory(img).is_ok());
-        assert!(set_from_path(TEST_IMGS[i]).is_ok());
+        assert!(set_from_path(test_img).is_ok());
     });
 }
 
