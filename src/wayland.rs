@@ -1,4 +1,5 @@
-use image::{imageops, DynamicImage};
+use fast_image_resize::{FilterType, PixelType, Resizer};
+use image::RgbaImage;
 use smithay_client_toolkit::{
     default_environment,
     environment::SimpleGlobal,
@@ -18,7 +19,7 @@ use smithay_client_toolkit::{
     shm::AutoMemPool,
     WaylandSource,
 };
-use std::{cell::Cell, error::Error, mem, rc::Rc, sync::mpsc};
+use std::{cell::Cell, error::Error, num::NonZeroU32, rc::Rc, sync::mpsc};
 
 default_environment!(Env,
     fields = [
@@ -40,7 +41,6 @@ struct Surface {
     layer_surface: Main<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1>,
     pool: AutoMemPool,
     dimensions: (u32, u32),
-    image: Option<DynamicImage>,
 }
 
 impl Surface {
@@ -49,7 +49,6 @@ impl Surface {
         surface: wl_surface::WlSurface,
         layer_shell: &Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
         pool: AutoMemPool,
-        image: Option<DynamicImage>,
     ) -> Result<Self, Box<dyn Error>> {
         let (width, height) = with_output_info(output, |info| {
             let dimensions = info.modes[0].dimensions;
@@ -97,41 +96,25 @@ impl Surface {
             layer_surface,
             pool,
             dimensions: (width, height),
-            image,
         })
     }
 
-    fn draw(&mut self) {
-        if let Some(image) = &self.image {
-            let stride = 4 * self.dimensions.0 as i32;
-            let width = self.dimensions.0 as i32;
-            let height = self.dimensions.1 as i32;
-            if let Ok((canvas, buffer)) =
-                self.pool
-                    .buffer(width, height, stride, wl_shm::Format::Argb8888)
-            {
-                let image: Vec<u8> = image
-                    .resize_to_fill(width as u32, height as u32, imageops::FilterType::Lanczos3)
-                    .to_rgba8()
-                    .to_vec()
-                    .chunks_exact_mut(4)
-                    .flat_map(|pixel| {
-                        pixel.swap(0, 2);
-                        pixel.to_vec()
-                    })
-                    .collect();
-
-                canvas.copy_from_slice(&image);
-
-                self.image = None;
-                mem::drop(image);
-
-                self.surface.attach(Some(&buffer), 0, 0);
-                self.surface
-                    .damage_buffer(0, 0, width as i32, height as i32);
-                self.surface.commit();
+    fn draw(&mut self, image: RgbaImage) {
+        let stride = 4 * self.dimensions.0 as i32;
+        let width = self.dimensions.0 as i32;
+        let height = self.dimensions.1 as i32;
+        if let Ok((canvas, buffer)) =
+            self.pool
+                .buffer(width, height, stride, wl_shm::Format::Argb8888)
+        {
+            if let Ok(image) = resize_image(image, width as u32, height as u32) {
+                canvas.copy_from_slice(&*image);
             };
-        }
+            self.surface.attach(Some(&buffer), 0, 0);
+            self.surface
+                .damage_buffer(0, 0, width as i32, height as i32);
+            self.surface.commit();
+        };
     }
 }
 
@@ -142,7 +125,51 @@ impl Drop for Surface {
     }
 }
 
-pub fn wayland(rx: mpsc::Receiver<DynamicImage>) -> Result<(), Box<dyn Error>> {
+fn resize_image(image: RgbaImage, width: u32, height: u32) -> Result<Vec<u8>, Box<dyn Error>> {
+    let (img_w, img_h) = image.dimensions();
+    let ratio = width as f32 / height as f32;
+    let img_r = img_w as f32 / img_h as f32;
+
+    let (trg_w, trg_h) = if ratio > img_r {
+        let scale = height as f32 / img_h as f32;
+        ((img_w as f32 * scale) as u32, height as u32)
+    } else {
+        let scale = width as f32 / img_w as f32;
+        (width as u32, (img_h as f32 * scale) as u32)
+    };
+
+    let trg_w = trg_w.min(width as u32);
+    let trg_h = trg_h.min(height as u32);
+
+    let src = fast_image_resize::Image::from_vec_u8(
+        NonZeroU32::new(img_w).unwrap(),
+        NonZeroU32::new(img_h).unwrap(),
+        image.into_raw(),
+        PixelType::U8x4,
+    )?;
+
+    let new_w = NonZeroU32::new(trg_w).unwrap();
+    let new_h = NonZeroU32::new(trg_h).unwrap();
+
+    let mut dst = fast_image_resize::Image::new(new_w, new_h, PixelType::U8x4);
+    let mut dst_view = dst.view_mut();
+
+    let mut resizer = Resizer::new(fast_image_resize::ResizeAlg::Convolution(
+        FilterType::Lanczos3,
+    ));
+    resizer.resize(&src.view(), &mut dst_view)?;
+
+    Ok(dst
+        .into_vec()
+        .chunks_exact_mut(4)
+        .flat_map(|pixel| {
+            pixel.swap(0, 2);
+            pixel.to_vec()
+        })
+        .collect())
+}
+
+pub fn wayland(rx: mpsc::Receiver<RgbaImage>) -> Result<(), Box<dyn Error>> {
     let (env, display, queue) =
         new_default_environment!(Env, fields = [layer_shell: SimpleGlobal::new(),])?;
 
@@ -155,7 +182,7 @@ pub fn wayland(rx: mpsc::Receiver<DynamicImage>) -> Result<(), Box<dyn Error>> {
         .first()
         .ok_or("Output not found")?
         .to_owned();
-    let mut surface_wrapper = Surface::new(&output, surface, &layer_shell.clone(), pool, None)?;
+    let mut surface_wrapper = Surface::new(&output, surface, &layer_shell.clone(), pool)?;
     let mut event_loop = calloop::EventLoop::<()>::try_new()?;
     WaylandSource::new(queue).quick_insert(event_loop.handle())?;
 
@@ -163,8 +190,7 @@ pub fn wayland(rx: mpsc::Receiver<DynamicImage>) -> Result<(), Box<dyn Error>> {
         display.flush()?;
         event_loop.dispatch(None, &mut ())?;
         if let Ok(img) = rx.recv() {
-            surface_wrapper.image = Some(img);
-            surface_wrapper.draw();
+            surface_wrapper.draw(img);
         }
     }
 }

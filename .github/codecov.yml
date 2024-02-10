@@ -6,3 +6,10 @@ coverage:
     project:
       default:
         threshold: 1%
+
+ignore:
+  - "tests"
+
+comment:
+  layout: "files"
+  require_changes: true

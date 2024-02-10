@@ -11,5 +11,6 @@ keywords = ["desktop", "wallpaper", "background"]
 categories = ["api-bindings"]
 
 [dependencies]
+fast_image_resize = "3.0.3"
 image = "0.24.8"
 smithay-client-toolkit = { version = "0.16.1", default-features = false, features = ["calloop"] }

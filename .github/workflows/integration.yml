@@ -33,6 +33,7 @@ jobs:
 
       - name: Generate coverage
         run: |
+          rustup component add llvm-tools-preview
           cargo install grcov
           grcov $(find . -name "grcov-*.profraw" -print) \
             --branch \

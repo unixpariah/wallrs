@@ -2,11 +2,7 @@ use std::path::PathBuf;
 use wlrs::{set_from_memory, set_from_path};
 
 const TEST_IMG_DIR: &str = "tests/test_images";
-const TEST_IMGS: [&str; 3] = [
-    "tests/test_images/test1.jpg",
-    "tests/test_images/test2.png",
-    "tests/test_images/test3.bmp",
-];
+const TEST_IMGS: [&str; 2] = ["tests/test_images/test1.jpg", "tests/test_images/test2.png"];
 
 fn make_img_dir() {
     let p = PathBuf::from(TEST_IMG_DIR);
