@@ -125,7 +125,7 @@ impl Drop for Surface {
     }
 }
 
-fn resize_image(image: RgbaImage, width: u32, height: u32) -> Result<Vec<u8>, Box<dyn Error>> {
+pub fn resize_image(image: RgbaImage, width: u32, height: u32) -> Result<Vec<u8>, Box<dyn Error>> {
     let (img_w, img_h) = image.dimensions();
     let ratio = width as f32 / height as f32;
     let img_r = img_w as f32 / img_h as f32;

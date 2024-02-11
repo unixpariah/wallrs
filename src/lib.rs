@@ -1,4 +1,4 @@
-mod wayland;
+pub mod wayland;
 
 use image::RgbaImage;
 use std::{

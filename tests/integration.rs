@@ -1,8 +1,14 @@
+use image::RgbImage;
 use std::path::PathBuf;
+use wlrs::wayland;
 use wlrs::{set_from_memory, set_from_path};
 
 const TEST_IMG_DIR: &str = "tests/test_images";
-const TEST_IMGS: [&str; 2] = ["tests/test_images/test1.jpg", "tests/test_images/test2.png"];
+const TEST_IMGS: [&str; 3] = [
+    "tests/test_images/test1.jpg",
+    "tests/test_images/test2.png",
+    "tests/test_images/test2.bmp",
+];
 
 fn make_img_dir() {
     let p = PathBuf::from(TEST_IMG_DIR);
@@ -32,14 +38,6 @@ fn make_test_imgs() {
     })
 }
 
-#[test]
-fn test_integration() {
-    make_test_imgs();
-
-    set_images();
-    set_image_that_does_not_exist();
-}
-
 fn set_images() {
     TEST_IMGS.iter().for_each(|test_img| {
         let img = image::open(test_img).unwrap();
@@ -50,4 +48,37 @@ fn set_images() {
 
 fn set_image_that_does_not_exist() {
     assert!(set_from_path("").is_err());
+}
+
+fn reduce_images() {
+    TEST_IMGS.iter().enumerate().for_each(|(i, image_path)| {
+        let img = image::open(image_path).unwrap().to_rgba8();
+        let (w, h) = img.dimensions();
+        let (new_w, new_h) = (w * (i as u32 + 1), h * (i as u32 + 1));
+        let resized_img = wayland::resize_image(img, new_w, new_h).unwrap();
+        let img = RgbImage::from_vec(new_w, new_h, resized_img).unwrap();
+        assert_eq!(img.dimensions(), (new_w, new_h));
+    });
+}
+
+fn enlarge_images() {
+    TEST_IMGS.iter().enumerate().for_each(|(i, image_path)| {
+        let img = image::open(image_path).unwrap().to_rgba8();
+        let (w, h) = img.dimensions();
+        let (new_w, new_h) = (w * (i as u32 + 1), h * (i as u32 + 1));
+        let resized_img = wayland::resize_image(img, new_w, new_h).unwrap();
+        let img = RgbImage::from_vec(new_w, new_h, resized_img).unwrap();
+        assert_eq!(img.dimensions(), (new_w, new_h));
+    });
+}
+
+#[test]
+fn test_integration() {
+    make_test_imgs();
+
+    set_images();
+    set_image_that_does_not_exist();
+
+    reduce_images();
+    enlarge_images();
 }
