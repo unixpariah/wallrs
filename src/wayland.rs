@@ -1,5 +1,5 @@
 use fast_image_resize::{FilterType, PixelType, Resizer};
-use image::RgbaImage;
+use image::RgbImage;
 use smithay_client_toolkit::{
     default_environment,
     environment::SimpleGlobal,
@@ -99,13 +99,13 @@ impl Surface {
         })
     }
 
-    fn draw(&mut self, image: RgbaImage) {
+    fn draw(&mut self, image: RgbImage) {
         let stride = 4 * self.dimensions.0 as i32;
         let width = self.dimensions.0 as i32;
         let height = self.dimensions.1 as i32;
         if let Ok((canvas, buffer)) =
             self.pool
-                .buffer(width, height, stride, wl_shm::Format::Argb8888)
+                .buffer(width, height, stride, wl_shm::Format::Rgb888)
         {
             if let Ok(image) = resize_image(image, width as u32, height as u32) {
                 canvas.copy_from_slice(&*image);
@@ -125,7 +125,7 @@ impl Drop for Surface {
     }
 }
 
-pub fn resize_image(image: RgbaImage, width: u32, height: u32) -> Result<Vec<u8>, Box<dyn Error>> {
+pub fn resize_image(image: RgbImage, width: u32, height: u32) -> Result<Vec<u8>, Box<dyn Error>> {
     let (img_w, img_h) = image.dimensions();
     let ratio = width as f32 / height as f32;
     let img_r = img_w as f32 / img_h as f32;
@@ -145,13 +145,13 @@ pub fn resize_image(image: RgbaImage, width: u32, height: u32) -> Result<Vec<u8>
         NonZeroU32::new(img_w).unwrap(),
         NonZeroU32::new(img_h).unwrap(),
         image.into_raw(),
-        PixelType::U8x4,
+        PixelType::U8x3,
     )?;
 
     let new_w = NonZeroU32::new(trg_w).unwrap();
     let new_h = NonZeroU32::new(trg_h).unwrap();
 
-    let mut dst = fast_image_resize::Image::new(new_w, new_h, PixelType::U8x4);
+    let mut dst = fast_image_resize::Image::new(new_w, new_h, PixelType::U8x3);
     let mut dst_view = dst.view_mut();
 
     let mut resizer = Resizer::new(fast_image_resize::ResizeAlg::Convolution(
@@ -169,7 +169,7 @@ pub fn resize_image(image: RgbaImage, width: u32, height: u32) -> Result<Vec<u8>
         .collect())
 }
 
-pub fn wayland(rx: mpsc::Receiver<RgbaImage>) -> Result<(), Box<dyn Error>> {
+pub fn wayland(rx: mpsc::Receiver<RgbImage>) -> Result<(), Box<dyn Error>> {
     let (env, display, queue) =
         new_default_environment!(Env, fields = [layer_shell: SimpleGlobal::new(),])?;
 

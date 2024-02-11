@@ -1,6 +1,6 @@
 pub mod wayland;
 
-use image::RgbaImage;
+use image::RgbImage;
 use std::{
     env,
     error::Error,
@@ -11,7 +11,7 @@ use std::{
 use wayland::wayland;
 
 static START: Once = Once::new();
-static mut SENDER: Mutex<Option<mpsc::Sender<RgbaImage>>> = Mutex::new(None);
+static mut SENDER: Mutex<Option<mpsc::Sender<RgbImage>>> = Mutex::new(None);
 
 pub fn set_from_path<T>(path: T) -> Result<(), Box<dyn Error + Send + Sync>>
 where
@@ -24,7 +24,7 @@ where
 
 pub fn set_from_memory<T>(image: T) -> Result<(), Box<dyn Error + Send + Sync>>
 where
-    T: Into<RgbaImage>,
+    T: Into<RgbImage>,
 {
     START.call_once(|| {
         let (tx, rx) = mpsc::channel();
