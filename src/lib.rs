@@ -1,6 +1,6 @@
 pub mod helpers;
 mod wayland;
-mod xorg;
+mod x11;
 
 use image::RgbaImage;
 use std::{
@@ -11,7 +11,7 @@ use std::{
     thread,
 };
 use wayland::wayland;
-use xorg::xorg;
+use x11::x11;
 
 static START: Once = Once::new();
 static mut SENDER: Mutex<Option<mpsc::Sender<RgbaImage>>> = Mutex::new(None);
@@ -43,9 +43,8 @@ where
                     wayland(rx).map_err(|_| "Failed to set wallpaper using wayland")?;
                 }
                 // When running X11 with startx XDG_SESSION_TYPE is set to tty as its what was used when logging in
-                // TODO: Make xorg actually work
                 "X11" | "tty" => {
-                    xorg(rx).map_err(|_| "Failed to set wallpaper using xorg")?;
+                    x11(rx).map_err(|_| "Failed to set wallpaper using xorg")?;
                 }
                 session_type => {
                     return Err(format!("Unsupported session type {}", session_type).into());
