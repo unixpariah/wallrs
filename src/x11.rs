@@ -10,10 +10,6 @@ pub fn x11(rx: mpsc::Receiver<RgbaImage>) -> Result<(), Box<dyn Error>> {
     let (width, height) = (screen.width_in_pixels(), screen.height_in_pixels());
 
     let window = screen.root();
-    conn.check_request(conn.send_request_checked(&x::ChangeWindowAttributes {
-        window,
-        value_list: &[x::Cw::EventMask(x::EventMask::EXPOSURE)],
-    }))?;
 
     let pixmap: x::Pixmap = conn.generate_id();
     conn.check_request(conn.send_request_checked(&x::CreatePixmap {
@@ -31,10 +27,6 @@ pub fn x11(rx: mpsc::Receiver<RgbaImage>) -> Result<(), Box<dyn Error>> {
         value_list: &[],
     }))?;
 
-    conn.check_request(conn.send_request_checked(&x::MapWindow { window }))?;
-
-    conn.flush()?;
-
     loop {
         let image = rx.recv()?;
         let image = resize_image(image, width as u32, height as u32)?;
@@ -51,8 +43,6 @@ pub fn x11(rx: mpsc::Receiver<RgbaImage>) -> Result<(), Box<dyn Error>> {
             data: &image,
         }))?;
 
-        conn.flush()?;
-
         conn.check_request(conn.send_request_checked(&x::CopyArea {
             src_drawable: x::Drawable::Pixmap(pixmap),
             dst_drawable: x::Drawable::Window(window),
@@ -64,7 +54,5 @@ pub fn x11(rx: mpsc::Receiver<RgbaImage>) -> Result<(), Box<dyn Error>> {
             width,
             height,
         }))?;
-
-        conn.flush()?;
     }
 }

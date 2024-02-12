@@ -1,4 +1,4 @@
-name: Test
+name: x11 Tests
 
 on:
   push:
@@ -23,7 +23,8 @@ jobs:
           key: cargo-stable
 
       - name: Install system dependencies
-        run: sudo apt-get install libxkbcommon-dev libwayland-dev
+        run: sudo apt-get install libx11-dev libxrandr-dev libxi-dev libxinerama-dev libxcursor-dev libxkbcommon-dev
+
 
       - name: Test
         env:

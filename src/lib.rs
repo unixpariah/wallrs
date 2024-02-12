@@ -57,7 +57,7 @@ where
     unsafe {
         let sender = SENDER.lock().map_err(|_| "Failed to acquire lock")?;
 
-        // TODO: This panics on weaker machines after second iteration if not throwing away the result
+        // TODO: This panics on weaker machines after running two times in quick successions
         let _ = sender
             .as_ref()
             .expect("It will always be Some at this point")
