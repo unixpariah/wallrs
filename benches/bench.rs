@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use image::ImageBuffer;
-use wlrs::wayland::resize_image;
+use wlrs::helpers::resize_image;
 
 fn bench_resize(c: &mut Criterion) {
     let image = black_box(ImageBuffer::new(3840, 2160));

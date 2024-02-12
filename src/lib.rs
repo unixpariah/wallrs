@@ -1,6 +1,8 @@
-pub mod wayland;
+pub mod helpers;
+mod wayland;
+mod xorg;
 
-use image::RgbImage;
+use image::RgbaImage;
 use std::{
     env,
     error::Error,
@@ -9,9 +11,10 @@ use std::{
     thread,
 };
 use wayland::wayland;
+use xorg::xorg;
 
 static START: Once = Once::new();
-static mut SENDER: Mutex<Option<mpsc::Sender<RgbImage>>> = Mutex::new(None);
+static mut SENDER: Mutex<Option<mpsc::Sender<RgbaImage>>> = Mutex::new(None);
 
 pub fn set_from_path<T>(path: T) -> Result<(), Box<dyn Error + Send + Sync>>
 where
@@ -24,7 +27,8 @@ where
 
 pub fn set_from_memory<T>(image: T) -> Result<(), Box<dyn Error + Send + Sync>>
 where
-    T: Into<RgbImage>,
+    // TODO: For performance use Rgb instead
+    T: Into<RgbaImage>,
 {
     START.call_once(|| {
         let (tx, rx) = mpsc::channel();
@@ -38,6 +42,11 @@ where
                 "wayland" => {
                     wayland(rx).map_err(|_| "Failed to set wallpaper using wayland")?;
                 }
+                // When running X11 with startx XDG_SESSION_TYPE is set to tty as its what was used when logging in
+                // TODO: Make xorg actually work
+                "X11" | "tty" => {
+                    xorg(rx).map_err(|_| "Failed to set wallpaper using xorg")?;
+                }
                 session_type => {
                     return Err(format!("Unsupported session type {}", session_type).into());
                 }
@@ -47,13 +56,13 @@ where
     });
 
     unsafe {
-        if let Some(sender) = SENDER
-            .lock()
-            .map_err(|_| "Failed to acquire lock")?
+        let sender = SENDER.lock().map_err(|_| "Failed to acquire lock")?;
+
+        // TODO: This panics on weaker machines after second iteration if not throwing away the result
+        let _ = sender
             .as_ref()
-        {
-            let _ = sender.send(image.into());
-        }
+            .expect("It will always be Some at this point")
+            .send(image.into());
     }
 
     Ok(())
