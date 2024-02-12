@@ -1,5 +1,5 @@
 use crate::helpers::resize_image;
-use image::RgbaImage;
+use image::RgbImage;
 use smithay_client_toolkit::{
     default_environment,
     environment::SimpleGlobal,
@@ -50,11 +50,14 @@ impl Surface {
         layer_shell: &Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
         pool: AutoMemPool,
     ) -> Result<Self, Box<dyn Error>> {
-        let (width, height) = with_output_info(output, |info| {
-            let dimensions = info.modes[0].dimensions;
-            (dimensions.0 as u32, dimensions.1 as u32)
-        })
-        .ok_or("Coult not get output info")?;
+        let output_info =
+            with_output_info(output, |info| info.clone()).ok_or("Could not get output info")?;
+
+        let (width, height) = (
+            output_info.modes[0].dimensions.0 as u32,
+            output_info.modes[0].dimensions.1 as u32,
+        );
+
         let layer_surface = layer_shell.get_layer_surface(
             &surface,
             Some(output),
@@ -67,6 +70,7 @@ impl Surface {
         layer_surface.set_keyboard_interactivity(KeyboardInteractivity::None);
         layer_surface.set_size(width, height);
 
+        // TODO: This is probably removable
         let next_render_event = Rc::new(Cell::new(None::<RenderEvent>));
         let next_render_event_handle = Rc::clone(&next_render_event);
         layer_surface.quick_assign(move |layer_surface, event, _| {
@@ -99,17 +103,18 @@ impl Surface {
         })
     }
 
-    fn draw(&mut self, image: RgbaImage) {
+    fn draw(&mut self, image: RgbImage) {
         let stride = 4 * self.dimensions.0 as i32;
         let width = self.dimensions.0 as i32;
         let height = self.dimensions.1 as i32;
         if let Ok((canvas, buffer)) =
             self.pool
-                .buffer(width, height, stride, wl_shm::Format::Xrgb8888)
+                .buffer(width, height, stride, wl_shm::Format::Xbgr8888)
         {
             if let Ok(image) = resize_image(image, width as u32, height as u32) {
                 canvas.copy_from_slice(&*image);
             };
+
             self.surface.attach(Some(&buffer), 0, 0);
             self.surface
                 .damage_buffer(0, 0, width as i32, height as i32);
@@ -125,7 +130,7 @@ impl Drop for Surface {
     }
 }
 
-pub fn wayland(rx: mpsc::Receiver<RgbaImage>) -> Result<(), Box<dyn Error>> {
+pub fn wayland(rx: mpsc::Receiver<RgbImage>) -> Result<(), Box<dyn Error>> {
     let (env, display, queue) =
         new_default_environment!(Env, fields = [layer_shell: SimpleGlobal::new(),])?;
 

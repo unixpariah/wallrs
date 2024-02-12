@@ -1,9 +1,9 @@
 use crate::helpers::resize_image;
-use image::RgbaImage;
+use image::RgbImage;
 use std::{error::Error, sync::mpsc};
 use xcb::x;
 
-pub fn x11(rx: mpsc::Receiver<RgbaImage>) -> Result<(), Box<dyn Error>> {
+pub fn x11(rx: mpsc::Receiver<RgbImage>) -> Result<(), Box<dyn Error>> {
     let (conn, screen_num) = xcb::Connection::connect(None).unwrap();
     let setup = conn.get_setup();
     let screen = setup.roots().nth(screen_num as usize).unwrap();

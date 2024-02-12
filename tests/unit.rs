@@ -1,4 +1,4 @@
-use image::RgbaImage;
+use image::RgbImage;
 use wlrs::helpers::resize_image;
 
 const TEST_IMGS: [&str; 3] = [
@@ -10,11 +10,11 @@ const TEST_IMGS: [&str; 3] = [
 #[test]
 fn shrink_images() {
     TEST_IMGS.iter().enumerate().for_each(|(i, image_path)| {
-        let img = image::open(image_path).unwrap().to_rgba8();
+        let img = image::open(image_path).unwrap().to_rgb8();
         let (w, h) = img.dimensions();
         let (new_w, new_h) = (w * (i as u32 + 1), h * (i as u32 + 1));
         let resized_img = resize_image(img, new_w, new_h).unwrap();
-        let img = RgbaImage::from_vec(new_w, new_h, resized_img).unwrap();
+        let img = RgbImage::from_vec(new_w, new_h, resized_img).unwrap();
         assert_eq!(img.dimensions(), (new_w, new_h));
     });
 }
@@ -22,11 +22,11 @@ fn shrink_images() {
 #[test]
 fn enlarge_images() {
     TEST_IMGS.iter().enumerate().for_each(|(i, image_path)| {
-        let img = image::open(image_path).unwrap().to_rgba8();
+        let img = image::open(image_path).unwrap().to_rgb8();
         let (w, h) = img.dimensions();
         let (new_w, new_h) = (w * (i as u32 + 1), h * (i as u32 + 1));
         let resized_img = resize_image(img, new_w, new_h).unwrap();
-        let img = RgbaImage::from_vec(new_w, new_h, resized_img).unwrap();
+        let img = RgbImage::from_vec(new_w, new_h, resized_img).unwrap();
         assert_eq!(img.dimensions(), (new_w, new_h));
     });
 }

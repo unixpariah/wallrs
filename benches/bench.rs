@@ -1,9 +1,9 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use image::{ImageBuffer, RgbaImage};
+use image::{ImageBuffer, RgbImage};
 use wlrs::helpers::resize_image;
 
 fn bench_resize(c: &mut Criterion) {
-    let image: RgbaImage = black_box(ImageBuffer::new(3840, 2160));
+    let image: RgbImage = black_box(ImageBuffer::new(3840, 2160));
     c.bench_function("enlarge_smol", |b| {
         b.iter(|| resize_image(image.clone(), 3940, 2260))
     });
