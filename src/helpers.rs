@@ -4,6 +4,11 @@ use std::{error::Error, num::NonZeroU32};
 
 pub fn resize_image(image: RgbImage, width: u32, height: u32) -> Result<Vec<u8>, Box<dyn Error>> {
     let (img_w, img_h) = image.dimensions();
+
+    if img_w == width && img_h == height {
+        return Ok(add_channel(image.into_raw()));
+    }
+
     let ratio = width as f32 / height as f32;
     let img_r = img_w as f32 / img_h as f32;
 
@@ -18,17 +23,18 @@ pub fn resize_image(image: RgbImage, width: u32, height: u32) -> Result<Vec<u8>,
     let trg_w = trg_w.min(width as u32);
     let trg_h = trg_h.min(height as u32);
 
+    // If img_w, img_h, trg_w or trg_h is 0 you have bigger problems than unsafety
     let src = fast_image_resize::Image::from_vec_u8(
-        NonZeroU32::new(img_w).unwrap(),
-        NonZeroU32::new(img_h).unwrap(),
+        unsafe { NonZeroU32::new_unchecked(img_w) },
+        unsafe { NonZeroU32::new_unchecked(img_h) },
         image.into_raw(),
         PixelType::U8x3,
     )?;
 
-    let new_w = NonZeroU32::new(trg_w).unwrap();
-    let new_h = NonZeroU32::new(trg_h).unwrap();
+    let trg_w = unsafe { NonZeroU32::new_unchecked(trg_w) };
+    let trg_h = unsafe { NonZeroU32::new_unchecked(trg_h) };
 
-    let mut dst = fast_image_resize::Image::new(new_w, new_h, PixelType::U8x3);
+    let mut dst = fast_image_resize::Image::new(trg_w, trg_h, PixelType::U8x3);
     let mut dst_view = dst.view_mut();
 
     let mut resizer = Resizer::new(fast_image_resize::ResizeAlg::Convolution(
@@ -39,11 +45,15 @@ pub fn resize_image(image: RgbImage, width: u32, height: u32) -> Result<Vec<u8>,
 
     let dst = dst.into_vec();
 
+    Ok(add_channel(dst))
+}
+
+fn add_channel(dst: Vec<u8>) -> Vec<u8> {
     let mut rgba_dst = Vec::with_capacity(dst.len() / 3 * 4);
     dst.chunks(3).for_each(|rgb_pixels| {
         rgba_dst.extend_from_slice(rgb_pixels);
         rgba_dst.push(255);
     });
 
-    Ok(rgba_dst)
+    rgba_dst
 }

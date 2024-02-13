@@ -19,6 +19,10 @@ fn bench_resize(c: &mut Criterion) {
     c.bench_function("shrink_big", |b| {
         b.iter(|| resize_image(image.clone(), 1940, 1060))
     });
+
+    c.bench_function("resize_to_current_size", |b| {
+        b.iter(|| resize_image(image.clone(), 3840, 2160))
+    });
 }
 
 criterion_group!(benches, bench_resize);

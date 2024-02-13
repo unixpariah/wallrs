@@ -1,4 +1,4 @@
-name: x11 Tests
+name: Tests
 
 on:
   push:
@@ -10,6 +10,9 @@ on:
 
 jobs:
   build:
+    strategy:
+      matrix:
+        environment: [X11]
     runs-on: ubuntu-latest
 
     steps:
@@ -22,15 +25,19 @@ jobs:
           path: ~/.cargo
           key: cargo-stable
 
-      - name: Install system dependencies
-        run: sudo apt-get install libx11-dev libxrandr-dev libxi-dev libxinerama-dev libxcursor-dev libxkbcommon-dev
+      - name: Install system dependencies (X11)
+        if: matrix.environment == 'X11'
+        run: sudo apt-get install libx11-dev libxrandr-dev libxi-dev libxinerama-dev libxcursor-dev libxkbcommon-dev xvfb
 
 
-      - name: Test
+      - name: Run tests (X11)
+        if: matrix.environment == 'X11'
         env:
           LLVM_PROFILE_FILE: grcov-%p-%m.profraw
           RUSTFLAGS: -Cinstrument-coverage
-        run: cargo test
+          XDG_SESSION_TYPE: X11
+        run: |
+          xvfb-run cargo test
 
       - name: Generate coverage
         run: |

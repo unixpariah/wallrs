@@ -19,7 +19,7 @@ use smithay_client_toolkit::{
     shm::AutoMemPool,
     WaylandSource,
 };
-use std::{cell::Cell, error::Error, rc::Rc, sync::mpsc};
+use std::{error::Error, sync::mpsc};
 
 default_environment!(Env,
     fields = [
@@ -29,12 +29,6 @@ default_environment!(Env,
         zwlr_layer_shell_v1::ZwlrLayerShellV1 => layer_shell
     ],
 );
-
-#[derive(PartialEq, Copy, Clone)]
-enum RenderEvent {
-    Redraw,
-    Kill,
-}
 
 struct Surface {
     surface: wl_surface::WlSurface,
@@ -50,13 +44,13 @@ impl Surface {
         layer_shell: &Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
         pool: AutoMemPool,
     ) -> Result<Self, Box<dyn Error>> {
-        let output_info =
-            with_output_info(output, |info| info.clone()).ok_or("Could not get output info")?;
-
-        let (width, height) = (
-            output_info.modes[0].dimensions.0 as u32,
-            output_info.modes[0].dimensions.1 as u32,
-        );
+        let (width, height) = with_output_info(output, |info| {
+            (
+                info.modes[0].dimensions.0 as u32,
+                info.modes[0].dimensions.1 as u32,
+            )
+        })
+        .ok_or("Could not get output info")?;
 
         let layer_surface = layer_shell.get_layer_surface(
             &surface,
@@ -69,27 +63,9 @@ impl Surface {
         layer_surface.set_margin(0, 0, 0, 0);
         layer_surface.set_keyboard_interactivity(KeyboardInteractivity::None);
         layer_surface.set_size(width, height);
-
-        // TODO: This is probably removable
-        let next_render_event = Rc::new(Cell::new(None::<RenderEvent>));
-        let next_render_event_handle = Rc::clone(&next_render_event);
         layer_surface.quick_assign(move |layer_surface, event, _| {
-            match (event, next_render_event_handle.get()) {
-                (zwlr_layer_surface_v1::Event::Closed, _) => {
-                    next_render_event_handle.set(Some(RenderEvent::Kill));
-                }
-                (
-                    zwlr_layer_surface_v1::Event::Configure {
-                        serial,
-                        width: _,
-                        height: _,
-                    },
-                    next,
-                ) if next != Some(RenderEvent::Kill) => {
-                    layer_surface.ack_configure(serial);
-                    next_render_event_handle.set(Some(RenderEvent::Redraw));
-                }
-                (_, _) => {}
+            if let zwlr_layer_surface_v1::Event::Configure { serial, .. } = event {
+                layer_surface.ack_configure(serial);
             }
         });
 
@@ -116,8 +92,7 @@ impl Surface {
             };
 
             self.surface.attach(Some(&buffer), 0, 0);
-            self.surface
-                .damage_buffer(0, 0, width as i32, height as i32);
+            self.surface.damage_buffer(0, 0, width, height);
             self.surface.commit();
         };
     }
@@ -132,7 +107,7 @@ impl Drop for Surface {
 
 pub fn wayland(rx: mpsc::Receiver<RgbImage>) -> Result<(), Box<dyn Error>> {
     let (env, display, queue) =
-        new_default_environment!(Env, fields = [layer_shell: SimpleGlobal::new(),])?;
+        new_default_environment!(Env, fields = [layer_shell: SimpleGlobal::new(),]).unwrap();
 
     let surface = env.create_surface().detach();
     let pool = env.create_auto_pool()?;
@@ -143,7 +118,7 @@ pub fn wayland(rx: mpsc::Receiver<RgbImage>) -> Result<(), Box<dyn Error>> {
         .first()
         .ok_or("Output not found")?
         .to_owned();
-    let mut surface_wrapper = Surface::new(&output, surface, &layer_shell.clone(), pool)?;
+    let mut surface = Surface::new(&output, surface, &layer_shell, pool)?;
     let mut event_loop = calloop::EventLoop::<()>::try_new()?;
     WaylandSource::new(queue).quick_insert(event_loop.handle())?;
 
@@ -151,7 +126,7 @@ pub fn wayland(rx: mpsc::Receiver<RgbImage>) -> Result<(), Box<dyn Error>> {
         display.flush()?;
         event_loop.dispatch(None, &mut ())?;
         if let Ok(img) = rx.recv() {
-            surface_wrapper.draw(img);
+            surface.draw(img);
         }
     }
 }

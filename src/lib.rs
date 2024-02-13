@@ -38,15 +38,12 @@ where
         }
         thread::spawn(move || -> Result<(), Box<dyn Error + Send + Sync>> {
             match env::var("XDG_SESSION_TYPE").unwrap_or_default().as_str() {
-                "wayland" => {
-                    wayland(rx).map_err(|_| "Failed to set wallpaper using wayland")?;
-                }
+                "wayland" => wayland(rx).map_err(|_| "Wayland failed")?,
                 // When running X11 with startx XDG_SESSION_TYPE is set to tty as its what was used when logging in
-                "X11" | "tty" => {
-                    x11(rx).map_err(|_| "Failed to set wallpaper using xorg")?;
-                }
+                // TODO: Actually make x11 work
+                "X11" | "tty" => x11(rx).map_err(|_| "X11 failed")?,
                 session_type => {
-                    return Err(format!("Unsupported session type {}", session_type).into());
+                    return Err(format!("Unsupported session type {}", session_type).into())
                 }
             }
             Ok(())
@@ -56,11 +53,11 @@ where
     unsafe {
         let sender = SENDER.lock().map_err(|_| "Failed to acquire lock")?;
 
-        // TODO: This panics on weaker machines after running two times in quick successions
-        let _ = sender
+        sender
             .as_ref()
             .expect("It will always be Some at this point")
-            .send(image.into());
+            // If this throws it means that rx was dropped due to error in the background thread
+            .send(image.into())?;
     }
 
     Ok(())
