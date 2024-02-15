@@ -52,7 +52,7 @@ pub fn x11(rx: mpsc::Receiver<RgbImage>) -> Result<(), Box<dyn Error>> {
 
         xcb::kill_client(&conn, xcb::KILL_ALL_TEMPORARY);
         xcb::set_close_down_mode(&conn, xcb::CLOSE_DOWN_RETAIN_TEMPORARY as u8);
-        for atom in ATOMS {
+        ATOMS.iter().for_each(|atom| {
             xcb::change_property(
                 &conn,
                 xcb::PROP_MODE_REPLACE as u8,
@@ -65,7 +65,7 @@ pub fn x11(rx: mpsc::Receiver<RgbImage>) -> Result<(), Box<dyn Error>> {
                 32,
                 &[pixmap_id],
             );
-        }
+        });
 
         xcb::kill_client(&conn, xcb::KILL_ALL_TEMPORARY);
         xcb::set_close_down_mode(&conn, xcb::CLOSE_DOWN_RETAIN_TEMPORARY as u8);

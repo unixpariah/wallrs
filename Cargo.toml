@@ -1,6 +1,6 @@
 [package]
 name = "wlrs"
-version = "0.1.5"
+version = "0.2.0"
 edition = "2021"
 description = "Rust library for managing wallpapers"
 license = "MIT"
@@ -14,8 +14,8 @@ categories = ["api-bindings"]
 fast_image_resize = "3.0.3"
 image = "0.24.8"
 smithay-client-toolkit = { version = "0.16.1", default-features = false, features = ["calloop"] }
-xcb = "0.7.x"
-xcb-util = {version = "0.1", features = ["image", "shm"]}
+xcb = "0.10.1"
+xcb-util = {version = "0.4", features = ["image", "shm"]}
 
 [dev-dependencies]
 criterion = "0.5.1"
