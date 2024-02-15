@@ -27,7 +27,7 @@ jobs:
 
       - name: Install system dependencies (X11)
         if: matrix.environment == 'X11'
-        run: sudo apt-get install libx11-dev libxrandr-dev libxi-dev libxinerama-dev libxcursor-dev libxkbcommon-dev xvfb
+        run: sudo apt-get install libx11-dev libxrandr-dev libxi-dev libxinerama-dev libxcursor-dev libxkbcommon-dev xvfb libxcb-image0 libxcb-image0-dev
 
 
       - name: Run tests (X11)
