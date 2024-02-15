@@ -40,7 +40,7 @@ where
             match env::var("XDG_SESSION_TYPE").unwrap_or_default().as_str() {
                 "wayland" => wayland(rx).map_err(|_| "Wayland failed")?,
                 // When running X11 with startx XDG_SESSION_TYPE is set to tty as its what was used when logging in
-                // TODO: Actually make x11 work
+                // TODO: Implement x11
                 "X11" | "tty" => x11(rx).map_err(|_| "X11 failed")?,
                 session_type => {
                     return Err(format!("Unsupported session type {}", session_type).into())

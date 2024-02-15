@@ -8,7 +8,6 @@ Rust library for managing wallpapers
 ## Supported environments:
 
 - Wayland
-- X11
 
 ## Examples:
 

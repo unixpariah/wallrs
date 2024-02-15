@@ -85,7 +85,7 @@ impl Surface {
         let height = self.dimensions.1 as i32;
         if let Ok((canvas, buffer)) =
             self.pool
-                .buffer(width, height, stride, wl_shm::Format::Xbgr8888)
+                .buffer(width, height, stride, wl_shm::Format::Xrgb8888)
         {
             if let Ok(image) = resize_image(image, width as u32, height as u32) {
                 canvas.copy_from_slice(&*image);

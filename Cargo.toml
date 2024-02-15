@@ -1,6 +1,6 @@
 [package]
 name = "wlrs"
-version = "0.1.2"
+version = "0.1.5"
 edition = "2021"
 description = "Rust library for managing wallpapers"
 license = "MIT"

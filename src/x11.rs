@@ -43,16 +43,9 @@ pub fn x11(rx: mpsc::Receiver<RgbImage>) -> Result<(), Box<dyn Error>> {
             data: &image,
         }))?;
 
-        conn.check_request(conn.send_request_checked(&x::CopyArea {
-            src_drawable: x::Drawable::Pixmap(pixmap),
-            dst_drawable: x::Drawable::Window(window),
-            gc,
-            src_x: 0,
-            src_y: 0,
-            dst_x: 0,
-            dst_y: 0,
-            width,
-            height,
+        conn.check_request(conn.send_request_checked(&x::ChangeWindowAttributes {
+            window,
+            value_list: &[x::Cw::BackPixmap(pixmap)],
         }))?;
     }
 }
