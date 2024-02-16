@@ -16,11 +16,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout sources
-        uses: actions/checkout@v2
-
-      - name: Cargo cache
-        uses: actions/cache@v1
+      - uses: actions/checkout@v2
+      - uses: actions/cache@v1
         with:
           path: ~/.cargo
           key: cargo-stable
@@ -28,7 +25,6 @@ jobs:
       - name: Install system dependencies (X11)
         if: matrix.environment == 'X11'
         run: sudo apt-get install libx11-dev libxrandr-dev libxi-dev libxinerama-dev libxcursor-dev libxkbcommon-dev xvfb libxcb-image0 libxcb-image0-dev
-
 
       - name: Run tests (X11)
         if: matrix.environment == 'X11'
@@ -39,8 +35,7 @@ jobs:
         run: |
           xvfb-run cargo test
 
-      - name: Generate coverage
-        run: |
+      - run: |
           rustup component add llvm-tools-preview
           cargo install grcov
           grcov $(find . -name "grcov-*.profraw" -print) \
@@ -52,8 +47,7 @@ jobs:
             --ignore "/*" \
             -o lcov.info
 
-      - name: Upload to CodeCov
-        uses: codecov/codecov-action@v3
+      - uses: codecov/codecov-action@v3
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./lcov.info

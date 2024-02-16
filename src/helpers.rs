@@ -2,6 +2,8 @@ use fast_image_resize::{FilterType, PixelType, Resizer};
 use image::RgbImage;
 use std::{error::Error, num::NonZeroU32};
 
+// This function is ripped off from swww
+
 pub fn resize_image(image: RgbImage, width: u32, height: u32) -> Result<Vec<u8>, Box<dyn Error>> {
     let (img_w, img_h) = image.dimensions();
     let image = image.into_vec();

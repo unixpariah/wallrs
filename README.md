@@ -1,14 +1,11 @@
 # WLRS /wɔːlrəs/ [![crate](https://img.shields.io/crates/v/wlrs.svg)](https://crates.io/crates/wlrs) [![Build Status](https://github.com/unixpariah/wlrs/actions/workflows/tests.yml/badge.svg)](https://github.com/unixpariah/wlrs/actions/workflows/tests.yml) [![codecov](https://codecov.io/gh/unixpariah/wlrs/graph/badge.svg?token=49LRWZ9D1K)](https://codecov.io/gh/unixpariah/wlrs) [![docs](https://docs.rs/wlrs/badge.svg)](https://docs.rs/wlrs/latest/wlrs/index.html) 
 
-
-
-
 Rust library for managing wallpapers
 
-## Supported environments:
+## Supported environments
 
-- Wayland
-- X11
+- Every Wayland compositor that implements layer-shell and xdg-output
+- X11 environments that don't have their own wallpaper management
 
 ## Examples:
 
