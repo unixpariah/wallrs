@@ -1172,6 +1172,7 @@ dependencies = [
  "criterion",
  "fast_image_resize",
  "image",
+ "libc",
  "smithay-client-toolkit",
  "x11rb",
 ]
