@@ -2,8 +2,18 @@ use fast_image_resize::{FilterType, PixelType, Resizer};
 use image::RgbImage;
 use std::{error::Error, num::NonZeroU32};
 
-// This function is ripped off from swww
-
+/// Made it public just to be able to benchmark it but go ahead
+/// Resize an image to the given width and height
+///
+/// Example:
+/// ```rust
+/// use image::RgbImage;
+/// use wlrs::helpers::resize_image;
+///
+/// let image = RgbImage::new(1920, 1080);
+/// let resized = resize_image(image, 1000, 1000).unwrap();
+/// ```
+/// Note, this function is totally ripped off from swww
 pub fn resize_image(image: RgbImage, width: u32, height: u32) -> Result<Vec<u8>, Box<dyn Error>> {
     let (img_w, img_h) = image.dimensions();
     let image = image.into_vec();

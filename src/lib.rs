@@ -16,6 +16,15 @@ use x11::x11;
 static START: Once = Once::new();
 static mut SENDER: Mutex<Option<mpsc::Sender<RgbImage>>> = Mutex::new(None);
 
+/// Set the wallpaper from a file path
+///
+/// # Example
+///
+/// ```no_run
+/// use wlrs::set_from_path;
+///
+/// set_from_path("path/to/image.png").unwrap();
+/// ```
 pub fn set_from_path<T>(path: T) -> Result<(), Box<dyn Error + Send + Sync>>
 where
     T: AsRef<Path>,
@@ -25,6 +34,17 @@ where
     Ok(())
 }
 
+/// Set the wallpaper from a memory buffer
+///
+/// # Example
+///
+/// ```rust
+/// use image::RgbImage;
+/// use wlrs::set_from_memory;
+///
+/// let image = RgbImage::new(1920, 1080);
+/// set_from_memory(image).unwrap();
+/// ```
 pub fn set_from_memory<T>(image: T) -> Result<(), Box<dyn Error + Send + Sync>>
 where
     T: Into<RgbImage>,
