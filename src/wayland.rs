@@ -88,7 +88,7 @@ impl Surface {
                 .buffer(width, height, stride, wl_shm::Format::Xrgb8888)
         {
             if let Ok(image) = resize_image(image, width as u32, height as u32) {
-                canvas.copy_from_slice(&*image);
+                canvas.copy_from_slice(&image);
             };
 
             self.surface.attach(Some(&buffer), 0, 0);
