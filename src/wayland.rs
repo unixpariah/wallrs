@@ -1,4 +1,4 @@
-use crate::helpers::resize_image;
+use crate::{helpers::resize_image, WallpaperData};
 use image::RgbImage;
 use smithay_client_toolkit::{
     default_environment,
@@ -22,7 +22,7 @@ use smithay_client_toolkit::{
     shm::AutoMemPool,
     WaylandSource,
 };
-use std::{error::Error, sync::mpsc};
+use std::{error::Error, sync::mpsc, time::Duration};
 
 default_environment!(Env,
     fields = [
@@ -34,7 +34,6 @@ default_environment!(Env,
 );
 
 struct Surface {
-    output_num: u8,
     surface: wl_surface::WlSurface,
     layer_surface: Main<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1>,
     pool: AutoMemPool,
@@ -43,7 +42,6 @@ struct Surface {
 
 impl Surface {
     fn new(
-        output_num: u8,
         output: &wl_output::WlOutput,
         surface: wl_surface::WlSurface,
         layer_shell: &Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
@@ -77,7 +75,6 @@ impl Surface {
         surface.commit();
 
         Ok(Self {
-            output_num,
             surface,
             layer_surface,
             pool,
@@ -111,32 +108,19 @@ impl Drop for Surface {
     }
 }
 
-pub fn wayland(rx: mpsc::Receiver<RgbImage>, output_num: Option<u8>) -> Result<(), Box<dyn Error>> {
+pub fn wayland(rx: mpsc::Receiver<WallpaperData>) -> Result<(), Box<dyn Error>> {
     let (env, display, queue) =
-        new_default_environment!(Env, fields = [layer_shell: SimpleGlobal::new(),])?;
+        new_default_environment!(Env, fields = [layer_shell: SimpleGlobal::new(),]).unwrap();
 
     let layer_shell = env.require_global::<zwlr_layer_shell_v1::ZwlrLayerShellV1>();
     let all_outputs = env.get_all_outputs();
-    let outputs: Vec<(u8, &WlOutput)> = match output_num {
-        Some(output_num) => vec![(
-            output_num,
-            all_outputs
-                .get(output_num as usize)
-                .ok_or("Output not found")?,
-        )],
-        None => all_outputs
-            .iter()
-            .enumerate()
-            .map(|(index, output)| (index as u8, output))
-            .collect(),
-    };
-
+    let outputs: Vec<&WlOutput> = all_outputs.iter().collect();
     let mut surfaces: Vec<Result<Surface, Box<dyn Error>>> = outputs
         .iter()
-        .map(|output_info| {
+        .map(|output| {
             let surface = env.create_surface().detach();
             let pool = env.create_auto_pool()?;
-            Surface::new(output_info.0, output_info.1, surface, &layer_shell, pool)
+            Surface::new(output, surface, &layer_shell, pool)
         })
         .collect();
     let mut event_loop = calloop::EventLoop::<()>::try_new()?;
@@ -144,15 +128,19 @@ pub fn wayland(rx: mpsc::Receiver<RgbImage>, output_num: Option<u8>) -> Result<(
 
     loop {
         display.flush()?;
-        event_loop.dispatch(None, &mut ())?;
-        if let Ok(img) = rx.recv() {
+        // If output_num that doesn't exist is passed there will be no new event to dispatch
+        // which will cause event_loop to wait infinitelly unless timeout is set
+        event_loop.dispatch(Some(Duration::ZERO), &mut ())?;
+        if let Ok(wallpaper_data) = rx.recv() {
             surfaces
                 .iter_mut()
                 .enumerate()
                 .for_each(|(index, surface)| {
                     if let Ok(surface) = surface {
-                        if surface.output_num == index as u8 || output_num.is_none() {
-                            surface.draw(&img);
+                        if wallpaper_data.output_num.is_none()
+                            || index as u8 == wallpaper_data.output_num.unwrap()
+                        {
+                            surface.draw(&wallpaper_data.image);
                         }
                     }
                 });

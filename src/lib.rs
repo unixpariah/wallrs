@@ -13,8 +13,13 @@ use std::{
 use wayland::wayland;
 use x11::x11;
 
+struct WallpaperData {
+    image: RgbImage,
+    output_num: Option<u8>,
+}
+
 static START: Once = Once::new();
-static mut SENDER: Mutex<Option<mpsc::Sender<RgbImage>>> = Mutex::new(None);
+static mut SENDER: Mutex<Option<mpsc::Sender<WallpaperData>>> = Mutex::new(None);
 
 /// Set the wallpaper from a file path
 ///
@@ -74,7 +79,7 @@ where
                 .to_lowercase()
                 .as_str()
             {
-                "wayland" => wayland(rx, output_num).map_err(|_| "Wayland failed")?,
+                "wayland" => wayland(rx).map_err(|_| "Wayland failed")?,
                 "x11" | "tty" => x11(rx).map_err(|_| "X11 failed")?,
                 session_type => {
                     return Err(format!("Unsupported session type {}", session_type).into())
@@ -84,13 +89,17 @@ where
         });
     });
 
+    let wallpaper_data = WallpaperData {
+        image: image.into(),
+        output_num,
+    };
     unsafe {
         let sender = SENDER.lock().map_err(|_| "Failed to acquire lock")?;
         sender
             .as_ref()
             .expect("It will always be Some at this point")
             // If this throws it means that rx was dropped due to error in the background thread
-            .send(image.into())?;
+            .send(wallpaper_data)?;
     }
 
     Ok(())

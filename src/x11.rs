@@ -1,5 +1,4 @@
-use crate::helpers::resize_image;
-use image::RgbImage;
+use crate::{helpers::resize_image, WallpaperData};
 use std::{error::Error, sync::mpsc};
 use x11rb::{
     connect,
@@ -13,7 +12,7 @@ use x11rb::{
 
 const ATOMS: &[&str] = &["_XROOTPMAP_ID", "_XSETROOT_ID", "ESETROOT_PMAP_ID"];
 
-pub fn x11(rx: mpsc::Receiver<RgbImage>) -> Result<(), Box<dyn Error>> {
+pub fn x11(rx: mpsc::Receiver<WallpaperData>) -> Result<(), Box<dyn Error>> {
     let (conn, screen_num) = connect(None).expect("Failed to connect to X server");
     let screen = conn.setup().roots[screen_num].to_owned();
 
@@ -28,8 +27,8 @@ pub fn x11(rx: mpsc::Receiver<RgbImage>) -> Result<(), Box<dyn Error>> {
     conn.flush()?;
 
     loop {
-        let image = rx.recv()?;
-        let image = resize_image(&image, width as u32, height as u32)?;
+        let wallpaper_data = rx.recv()?;
+        let image = resize_image(&wallpaper_data.image, width as u32, height as u32)?;
 
         conn.put_image(
             ImageFormat::Z_PIXMAP,
