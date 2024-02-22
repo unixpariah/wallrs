@@ -11,7 +11,7 @@ use x11rb::{
     wrapper::ConnectionExt as _,
 };
 
-const ATOMS: &'static [&'static str] = &["_XROOTPMAP_ID", "_XSETROOT_ID", "ESETROOT_PMAP_ID"];
+const ATOMS: &[&str] = &["_XROOTPMAP_ID", "_XSETROOT_ID", "ESETROOT_PMAP_ID"];
 
 pub fn x11(rx: mpsc::Receiver<RgbImage>) -> Result<(), Box<dyn Error>> {
     let (conn, screen_num) = connect(None).expect("Failed to connect to X server");
@@ -29,7 +29,7 @@ pub fn x11(rx: mpsc::Receiver<RgbImage>) -> Result<(), Box<dyn Error>> {
 
     loop {
         let image = rx.recv()?;
-        let image = resize_image(image, width as u32, height as u32)?;
+        let image = resize_image(&image, width as u32, height as u32)?;
 
         conn.put_image(
             ImageFormat::Z_PIXMAP,
@@ -41,7 +41,7 @@ pub fn x11(rx: mpsc::Receiver<RgbImage>) -> Result<(), Box<dyn Error>> {
             0,
             0,
             screen.root_depth,
-            &*image,
+            &image,
         )?;
         conn.kill_client(Kill::ALL_TEMPORARY)?;
         conn.set_close_down_mode(CloseDown::RETAIN_TEMPORARY)?;

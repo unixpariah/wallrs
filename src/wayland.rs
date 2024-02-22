@@ -8,7 +8,10 @@ use smithay_client_toolkit::{
     reexports::{
         calloop,
         client::{
-            protocol::{wl_output, wl_shm, wl_surface},
+            protocol::{
+                wl_output::{self, WlOutput},
+                wl_shm, wl_surface,
+            },
             Attached, Main,
         },
         protocols::wlr::unstable::layer_shell::v1::client::{
@@ -79,7 +82,7 @@ impl Surface {
         })
     }
 
-    fn draw(&mut self, image: RgbImage) {
+    fn draw(&mut self, image: &RgbImage) {
         let stride = 4 * self.dimensions.0 as i32;
         let width = self.dimensions.0 as i32;
         let height = self.dimensions.1 as i32;
@@ -105,20 +108,27 @@ impl Drop for Surface {
     }
 }
 
-pub fn wayland(rx: mpsc::Receiver<RgbImage>) -> Result<(), Box<dyn Error>> {
+pub fn wayland(rx: mpsc::Receiver<RgbImage>, output_num: Option<u8>) -> Result<(), Box<dyn Error>> {
     let (env, display, queue) =
-        new_default_environment!(Env, fields = [layer_shell: SimpleGlobal::new(),]).unwrap();
-
-    let surface = env.create_surface().detach();
-    let pool = env.create_auto_pool()?;
+        new_default_environment!(Env, fields = [layer_shell: SimpleGlobal::new(),])?;
 
     let layer_shell = env.require_global::<zwlr_layer_shell_v1::ZwlrLayerShellV1>();
-    let output = env
-        .get_all_outputs()
-        .first()
-        .ok_or("Output not found")?
-        .to_owned();
-    let mut surface = Surface::new(&output, surface, &layer_shell, pool)?;
+    let all_outputs = env.get_all_outputs();
+    let outputs: Vec<&WlOutput> = match output_num {
+        Some(output_num) => vec![all_outputs
+            .get(output_num as usize)
+            .ok_or("Output not found")?],
+        None => all_outputs.iter().collect(),
+    };
+
+    let mut surfaces: Vec<Result<Surface, Box<dyn Error>>> = outputs
+        .iter()
+        .map(|output| {
+            let surface = env.create_surface().detach();
+            let pool = env.create_auto_pool()?;
+            Surface::new(output, surface, &layer_shell, pool)
+        })
+        .collect();
     let mut event_loop = calloop::EventLoop::<()>::try_new()?;
     WaylandSource::new(queue).quick_insert(event_loop.handle())?;
 
@@ -126,7 +136,11 @@ pub fn wayland(rx: mpsc::Receiver<RgbImage>) -> Result<(), Box<dyn Error>> {
         display.flush()?;
         event_loop.dispatch(None, &mut ())?;
         if let Ok(img) = rx.recv() {
-            surface.draw(img);
+            surfaces.iter_mut().for_each(|surface| {
+                if let Ok(surface) = surface {
+                    surface.draw(&img);
+                }
+            });
         }
     }
 }

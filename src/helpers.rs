@@ -11,12 +11,12 @@ use std::{error::Error, num::NonZeroU32};
 /// use wlrs::helpers::resize_image;
 ///
 /// let image = RgbImage::new(1920, 1080);
-/// let resized = resize_image(image, 1000, 1000).unwrap();
+/// let resized = resize_image(&image, 1000, 1000).unwrap();
 /// ```
 /// Note, this function is totally ripped off from swww
-pub fn resize_image(image: RgbImage, width: u32, height: u32) -> Result<Vec<u8>, Box<dyn Error>> {
+pub fn resize_image(image: &RgbImage, width: u32, height: u32) -> Result<Vec<u8>, Box<dyn Error>> {
     let (img_w, img_h) = image.dimensions();
-    let image = image.into_vec();
+    let image = image.as_raw().to_vec();
 
     if img_w == width && img_h == height {
         return Ok(pad(
@@ -31,14 +31,14 @@ pub fn resize_image(image: RgbImage, width: u32, height: u32) -> Result<Vec<u8>,
 
     let (trg_w, trg_h) = if ratio > img_r {
         let scale = height as f32 / img_h as f32;
-        ((img_w as f32 * scale) as u32, height as u32)
+        ((img_w as f32 * scale) as u32, height)
     } else {
         let scale = width as f32 / img_w as f32;
-        (width as u32, (img_h as f32 * scale) as u32)
+        (width, (img_h as f32 * scale) as u32)
     };
 
-    let trg_w = trg_w.min(width as u32);
-    let trg_h = trg_h.min(height as u32);
+    let trg_w = trg_w.min(width);
+    let trg_h = trg_h.min(height);
 
     // If img_w, img_h, trg_w or trg_h is 0 you have bigger problems than unsafety
     let src = fast_image_resize::Image::from_vec_u8(

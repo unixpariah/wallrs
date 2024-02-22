@@ -23,14 +23,18 @@ static mut SENDER: Mutex<Option<mpsc::Sender<RgbImage>>> = Mutex::new(None);
 /// ```no_run
 /// use wlrs::set_from_path;
 ///
-/// set_from_path("path/to/image.png").unwrap();
+/// // Set to first monitor
+/// set_from_path("path/to/image.png", Some(0)).unwrap();
+///
+/// // Set to all monitors
+/// set_from_path("path/to/image.png", None).unwrap();
 /// ```
-pub fn set_from_path<T>(path: T) -> Result<(), Box<dyn Error + Send + Sync>>
+pub fn set_from_path<T>(path: T, output_num: Option<u8>) -> Result<(), Box<dyn Error + Send + Sync>>
 where
     T: AsRef<Path>,
 {
     let image = image::open(path)?;
-    set_from_memory(image)?;
+    set_from_memory(image, output_num)?;
     Ok(())
 }
 
@@ -42,10 +46,18 @@ where
 /// use image::RgbImage;
 /// use wlrs::set_from_memory;
 ///
+/// // Set to first monitor
 /// let image = RgbImage::new(1920, 1080);
-/// set_from_memory(image).unwrap();
+/// set_from_memory(image, Some(0)).unwrap();
+///
+/// // Set to all monitors
+/// let image = RgbImage::new(1920, 1080);
+/// set_from_memory(image, None).unwrap();
 /// ```
-pub fn set_from_memory<T>(image: T) -> Result<(), Box<dyn Error + Send + Sync>>
+pub fn set_from_memory<T>(
+    image: T,
+    output_num: Option<u8>,
+) -> Result<(), Box<dyn Error + Send + Sync>>
 where
     T: Into<RgbImage>,
 {
@@ -62,7 +74,7 @@ where
                 .to_lowercase()
                 .as_str()
             {
-                "wayland" => wayland(rx).map_err(|_| "Wayland failed")?,
+                "wayland" => wayland(rx, output_num).map_err(|_| "Wayland failed")?,
                 "x11" | "tty" => x11(rx).map_err(|_| "X11 failed")?,
                 session_type => {
                     return Err(format!("Unsupported session type {}", session_type).into())

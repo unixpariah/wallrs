@@ -15,8 +15,13 @@ use image;
 use wlrs::set_from_memory;
 
 fn main() {
+  // Setting to first monitor
   let wallpaper = image::open("wallpaper.jpg").unwrap();
-  set_from_memory(wallpaper).unwrap();
+  set_from_memory(wallpaper, Some(0)).unwrap();
+
+  // Setting to all monitors
+  let wallpaper = image::open("wallpaper.jpg").unwrap();
+  set_from_memory(wallpaper, None).unwrap();
 }
 ```
 
@@ -26,6 +31,10 @@ Setting from file path:
 use wlrs::set_from_path;
 
 fn main() {
-  set_from_path("wallpaper.jpg").unwrap();
+  // Setting to first monitor
+  set_from_path("wallpaper.jpg", Some(0)).unwrap();
+  
+  // Setting to all monitors
+  set_from_path("wallpaper.jpg", None).unwrap();
 }
 ```

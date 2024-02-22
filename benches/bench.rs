@@ -5,23 +5,23 @@ use wlrs::helpers::resize_image;
 fn bench_resize(c: &mut Criterion) {
     let image: RgbImage = black_box(ImageBuffer::new(3840, 2160));
     c.bench_function("enlarge_smol", |b| {
-        b.iter(|| resize_image(image.clone(), 3940, 2260))
+        b.iter(|| resize_image(&image, 3940, 2260))
     });
 
     c.bench_function("shrink_smol", |b| {
-        b.iter(|| resize_image(image.clone(), 3740, 2060))
+        b.iter(|| resize_image(&image, 3740, 2060))
     });
 
     c.bench_function("enlarge_big", |b| {
-        b.iter(|| resize_image(image.clone(), 4840, 3160))
+        b.iter(|| resize_image(&image, 4840, 3160))
     });
 
     c.bench_function("shrink_big", |b| {
-        b.iter(|| resize_image(image.clone(), 1940, 1060))
+        b.iter(|| resize_image(&image, 1940, 1060))
     });
 
     c.bench_function("resize_to_current_size", |b| {
-        b.iter(|| resize_image(image.clone(), 3840, 2160))
+        b.iter(|| resize_image(&image, 3840, 2160))
     });
 }
 
