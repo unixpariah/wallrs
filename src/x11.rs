@@ -46,21 +46,18 @@ pub fn x11(rx: mpsc::Receiver<RgbImage>) -> Result<(), Box<dyn Error>> {
         conn.kill_client(Kill::ALL_TEMPORARY)?;
         conn.set_close_down_mode(CloseDown::RETAIN_TEMPORARY)?;
         ATOMS.iter().for_each(|atom| {
-            let atom = conn
-                .intern_atom(false, atom.as_bytes())
-                .unwrap()
-                .reply()
-                .unwrap()
-                .atom;
-
-            conn.change_property32(
-                PropMode::REPLACE,
-                screen.root,
-                atom,
-                AtomEnum::PIXMAP,
-                &[pixmap],
-            )
-            .unwrap();
+            if let Ok(intern_atom_cookie) = conn.intern_atom(false, atom.as_bytes()) {
+                if let Ok(intern_atom_reply) = intern_atom_cookie.reply() {
+                    let atom = intern_atom_reply.atom;
+                    let _ = conn.change_property32(
+                        PropMode::REPLACE,
+                        screen.root,
+                        atom,
+                        AtomEnum::PIXMAP,
+                        &[pixmap],
+                    );
+                };
+            }
         });
 
         conn.kill_client(Kill::ALL_TEMPORARY)?;

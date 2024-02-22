@@ -11,7 +11,6 @@ Rust library for managing wallpapers
 
 Setting from memory:
 ```rust
-use image;
 use wlrs::set_from_memory;
 
 fn main() {
