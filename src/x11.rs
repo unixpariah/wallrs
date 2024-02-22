@@ -15,7 +15,7 @@ const ATOMS: &[&str] = &["_XROOTPMAP_ID", "_XSETROOT_ID", "ESETROOT_PMAP_ID"];
 
 pub fn x11(rx: mpsc::Receiver<RgbImage>) -> Result<(), Box<dyn Error>> {
     let (conn, screen_num) = connect(None).expect("Failed to connect to X server");
-    let screen = conn.setup().roots[screen_num].clone();
+    let screen = conn.setup().roots[screen_num].to_owned();
 
     let width = screen.width_in_pixels;
     let height = screen.height_in_pixels;

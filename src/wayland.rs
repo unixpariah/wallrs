@@ -34,6 +34,7 @@ default_environment!(Env,
 );
 
 struct Surface {
+    output_num: u8,
     surface: wl_surface::WlSurface,
     layer_surface: Main<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1>,
     pool: AutoMemPool,
@@ -42,6 +43,7 @@ struct Surface {
 
 impl Surface {
     fn new(
+        output_num: u8,
         output: &wl_output::WlOutput,
         surface: wl_surface::WlSurface,
         layer_shell: &Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
@@ -75,6 +77,7 @@ impl Surface {
         surface.commit();
 
         Ok(Self {
+            output_num,
             surface,
             layer_surface,
             pool,
@@ -114,19 +117,26 @@ pub fn wayland(rx: mpsc::Receiver<RgbImage>, output_num: Option<u8>) -> Result<(
 
     let layer_shell = env.require_global::<zwlr_layer_shell_v1::ZwlrLayerShellV1>();
     let all_outputs = env.get_all_outputs();
-    let outputs: Vec<&WlOutput> = match output_num {
-        Some(output_num) => vec![all_outputs
-            .get(output_num as usize)
-            .ok_or("Output not found")?],
-        None => all_outputs.iter().collect(),
+    let outputs: Vec<(u8, &WlOutput)> = match output_num {
+        Some(output_num) => vec![(
+            output_num,
+            all_outputs
+                .get(output_num as usize)
+                .ok_or("Output not found")?,
+        )],
+        None => all_outputs
+            .iter()
+            .enumerate()
+            .map(|(index, output)| (index as u8, output))
+            .collect(),
     };
 
     let mut surfaces: Vec<Result<Surface, Box<dyn Error>>> = outputs
         .iter()
-        .map(|output| {
+        .map(|output_info| {
             let surface = env.create_surface().detach();
             let pool = env.create_auto_pool()?;
-            Surface::new(output, surface, &layer_shell, pool)
+            Surface::new(output_info.0, output_info.1, surface, &layer_shell, pool)
         })
         .collect();
     let mut event_loop = calloop::EventLoop::<()>::try_new()?;
@@ -136,11 +146,16 @@ pub fn wayland(rx: mpsc::Receiver<RgbImage>, output_num: Option<u8>) -> Result<(
         display.flush()?;
         event_loop.dispatch(None, &mut ())?;
         if let Ok(img) = rx.recv() {
-            surfaces.iter_mut().for_each(|surface| {
-                if let Ok(surface) = surface {
-                    surface.draw(&img);
-                }
-            });
+            surfaces
+                .iter_mut()
+                .enumerate()
+                .for_each(|(index, surface)| {
+                    if let Ok(surface) = surface {
+                        if surface.output_num == index as u8 || output_num.is_none() {
+                            surface.draw(&img);
+                        }
+                    }
+                });
         }
     }
 }

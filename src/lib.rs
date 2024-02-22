@@ -86,7 +86,6 @@ where
 
     unsafe {
         let sender = SENDER.lock().map_err(|_| "Failed to acquire lock")?;
-
         sender
             .as_ref()
             .expect("It will always be Some at this point")
