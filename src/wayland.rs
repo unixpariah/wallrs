@@ -137,8 +137,8 @@ pub fn wayland(rx: mpsc::Receiver<WallpaperData>) -> Result<(), Box<dyn Error>> 
                 .enumerate()
                 .for_each(|(index, surface)| {
                     if let Ok(surface) = surface {
-                        if wallpaper_data.output_num.is_none()
-                            || index as u8 == wallpaper_data.output_num.unwrap()
+                        if wallpaper_data.output_num.is_empty()
+                            || wallpaper_data.output_num.contains(&index)
                         {
                             surface.draw(&wallpaper_data.image);
                         }
