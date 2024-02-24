@@ -39,13 +39,13 @@ fn make_test_imgs() {
 fn set_images() {
     TEST_IMGS.iter().for_each(|test_img| {
         let img = image::open(test_img).unwrap();
-        assert!(set_from_memory(img, vec![]).is_ok());
-        assert!(set_from_path(test_img, vec![]).is_ok());
+        assert!(set_from_memory(img, &[]).is_ok());
+        assert!(set_from_path(test_img, &[]).is_ok());
     });
 }
 
 fn set_image_that_does_not_exist() {
-    assert!(set_from_path("", vec![]).is_err());
+    assert!(set_from_path("", &[]).is_err());
 }
 
 #[test]
