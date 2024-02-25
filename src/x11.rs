@@ -69,20 +69,25 @@ pub fn x11(rx: mpsc::Receiver<WallpaperData>) -> Result<(), Box<dyn Error>> {
 
     loop {
         let wallpaper_data = rx.recv()?;
-        for scr in screens.iter() {
-            let image = resize_image(&wallpaper_data.image, scr.width as u32, scr.height as u32)?;
-            conn.put_image(
-                ImageFormat::Z_PIXMAP,
-                pixmap,
-                context,
-                scr.width,
-                scr.height,
-                scr.x,
-                scr.y,
-                0,
-                screen.root_depth,
-                &image,
-            )?;
+        for (index, scr) in screens.iter().enumerate() {
+            if wallpaper_data.output_num.contains(&(index as u8))
+                || wallpaper_data.output_num.is_empty()
+            {
+                let image =
+                    resize_image(&wallpaper_data.image, scr.width as u32, scr.height as u32)?;
+                conn.put_image(
+                    ImageFormat::Z_PIXMAP,
+                    pixmap,
+                    context,
+                    scr.width,
+                    scr.height,
+                    scr.x,
+                    scr.y,
+                    0,
+                    screen.root_depth,
+                    &image,
+                )?;
+            }
         }
         conn.kill_client(Kill::ALL_TEMPORARY)?;
         conn.set_close_down_mode(CloseDown::RETAIN_TEMPORARY)?;
