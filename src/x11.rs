@@ -4,7 +4,7 @@ use x11rb::{
     connect,
     connection::Connection,
     protocol::{
-        randr::{ConnectionExt as _, GetOutputInfoReply},
+        randr::ConnectionExt as _,
         xproto::{
             AtomEnum, ChangeWindowAttributesAux, CloseDown, ConnectionExt as _, CreateGCAux,
             ImageFormat, Kill, PropMode,
@@ -17,7 +17,6 @@ const ATOMS: &[&str] = &["_XROOTPMAP_ID", "_XSETROOT_ID", "ESETROOT_PMAP_ID"];
 
 #[derive(Debug)]
 struct Screen {
-    monitor: GetOutputInfoReply,
     width: u16,
     height: u16,
     x: i16,
@@ -31,31 +30,37 @@ pub fn x11(rx: mpsc::Receiver<WallpaperData>) -> Result<(), Box<dyn Error>> {
         .randr_get_screen_resources_current(screen.root)?
         .reply()?;
 
-    let mut screens = Vec::new();
+    let screens: Vec<Screen> = res
+        .outputs
+        .iter()
+        .filter_map(|output| {
+            let crtc = conn
+                .randr_get_output_info(*output, res.config_timestamp)
+                .ok()?
+                .reply()
+                .ok()?
+                .crtc;
 
-    for a in res.outputs {
-        let info = conn
-            .randr_get_output_info(a, res.config_timestamp)
-            .unwrap()
-            .reply()
-            .unwrap();
+            if crtc == 0 {
+                return None;
+            }
 
-        if info.crtc != 0 {
             let crtc_info = conn
-                .randr_get_crtc_info(info.crtc, res.config_timestamp)?
-                .reply()?;
+                .randr_get_crtc_info(crtc, res.config_timestamp)
+                .ok()?
+                .reply()
+                .ok()?;
 
             let screen = Screen {
-                monitor: info,
                 width: crtc_info.width,
                 height: crtc_info.height,
                 x: crtc_info.x,
                 y: crtc_info.y,
             };
 
-            screens.push(screen);
-        }
-    }
+            Some(screen)
+        })
+        .collect();
 
     let width = screen.width_in_pixels;
     let height = screen.height_in_pixels;
@@ -69,13 +74,13 @@ pub fn x11(rx: mpsc::Receiver<WallpaperData>) -> Result<(), Box<dyn Error>> {
 
     loop {
         let wallpaper_data = rx.recv()?;
-        for (index, scr) in screens.iter().enumerate() {
+        screens.iter().enumerate().try_for_each(|(index, scr)| {
             if wallpaper_data.output_num.contains(&(index as u8))
                 || wallpaper_data.output_num.is_empty()
             {
                 let image =
                     resize_image(&wallpaper_data.image, scr.width as u32, scr.height as u32)?;
-                conn.put_image(
+                let _ = conn.put_image(
                     ImageFormat::Z_PIXMAP,
                     pixmap,
                     context,
@@ -86,9 +91,11 @@ pub fn x11(rx: mpsc::Receiver<WallpaperData>) -> Result<(), Box<dyn Error>> {
                     0,
                     screen.root_depth,
                     &image,
-                )?;
+                );
             }
-        }
+
+            Ok::<(), Box<dyn Error>>(())
+        })?;
         conn.kill_client(Kill::ALL_TEMPORARY)?;
         conn.set_close_down_mode(CloseDown::RETAIN_TEMPORARY)?;
         ATOMS.iter().for_each(|atom| {
