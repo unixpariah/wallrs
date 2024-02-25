@@ -15,7 +15,7 @@ use x11::x11;
 
 struct WallpaperData {
     image: RgbImage,
-    output_num: &'static [u8],
+    output_num: Vec<u8>,
 }
 
 static START: Once = Once::new();
@@ -29,18 +29,15 @@ static mut SENDER: Mutex<Option<mpsc::Sender<WallpaperData>>> = Mutex::new(None)
 /// use wlrs::set_from_path;
 ///
 /// // Set to first monitor
-/// set_from_path("path/to/image.png", &[0]).unwrap();
+/// set_from_path("path/to/image.png", vec![0]).unwrap();
 ///
 /// // Set to multiple monitors
-/// set_from_path("path/to/image.png", &[0, 1]).unwrap();
+/// set_from_path("path/to/image.png", vec![0, 1]).unwrap();
 ///
 /// // Set to all monitors
-/// set_from_path("path/to/image.png", &[]).unwrap();
+/// set_from_path("path/to/image.png", Vec::new()).unwrap();
 /// ```
-pub fn set_from_path<T>(
-    path: T,
-    output_num: &'static [u8],
-) -> Result<(), Box<dyn Error + Send + Sync>>
+pub fn set_from_path<T>(path: T, output_num: Vec<u8>) -> Result<(), Box<dyn Error + Send + Sync>>
 where
     T: AsRef<Path>,
 {
@@ -59,20 +56,17 @@ where
 ///
 /// // Set to first monitor
 /// let image = RgbImage::new(1920, 1080);
-/// set_from_memory(image, &[0]).unwrap();
+/// set_from_memory(image, vec![0]).unwrap();
 ///
 /// // Set to multiple monitors
 /// let image = RgbImage::new(1920, 1080);
-/// set_from_memory(image, &[0, 1]).unwrap();
+/// set_from_memory(image, vec![0, 1]).unwrap();
 ///
 /// // Set to all monitors
 /// let image = RgbImage::new(1920, 1080);
-/// set_from_memory(image, &[]).unwrap();
+/// set_from_memory(image, Vec::new()).unwrap();
 /// ```
-pub fn set_from_memory<T>(
-    image: T,
-    output_num: &'static [u8],
-) -> Result<(), Box<dyn Error + Send + Sync>>
+pub fn set_from_memory<T>(image: T, output_num: Vec<u8>) -> Result<(), Box<dyn Error + Send + Sync>>
 where
     T: Into<RgbImage>,
 {
