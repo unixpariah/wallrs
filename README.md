@@ -4,8 +4,8 @@ Rust library for managing wallpapers
 
 ## Supported environments
 
-- Every Wayland compositor that implements layer-shell and xdg-output
-- X11 environments that don't have their own wallpaper management
+- Every Wayland compositor that implements layer-shell (e.g. Hyprland, Sway, Wayfire, etc.)
+- X11 environments that don't have their own wallpaper management (e.g. dwm, i3, bspwm, etc.)
 
 ## Examples:
 

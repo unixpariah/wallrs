@@ -15,7 +15,6 @@ use x11rb::{
 
 const ATOMS: &[&str] = &["_XROOTPMAP_ID", "_XSETROOT_ID", "ESETROOT_PMAP_ID"];
 
-#[derive(Debug)]
 struct Screen {
     width: u16,
     height: u16,
