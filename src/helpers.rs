@@ -3,7 +3,6 @@ use image::RgbImage;
 use std::{error::Error, num::NonZeroU32};
 
 /// Made it public just to be able to benchmark it but go ahead
-///
 /// Resize an image to the given width and height
 ///
 /// Example:

@@ -12,7 +12,7 @@ use smithay_client_toolkit::{
                 wl_output::{self, WlOutput},
                 wl_shm, wl_surface,
             },
-            Attached,
+            Attached, Main,
         },
         protocols::wlr::unstable::layer_shell::v1::client::{
             zwlr_layer_shell_v1,
@@ -35,6 +35,7 @@ default_environment!(Env,
 
 struct Surface {
     surface: wl_surface::WlSurface,
+    layer_surface: Main<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1>,
     pool: AutoMemPool,
     dimensions: (u32, u32),
 }
@@ -63,8 +64,8 @@ impl Surface {
         layer_surface.set_anchor(zwlr_layer_surface_v1::Anchor::all());
         layer_surface.set_exclusive_zone(-1);
         layer_surface.set_margin(0, 0, 0, 0);
-        layer_surface.set_size(width, height);
         layer_surface.set_keyboard_interactivity(KeyboardInteractivity::None);
+        layer_surface.set_size(width, height);
         layer_surface.quick_assign(move |layer_surface, event, _| {
             if let zwlr_layer_surface_v1::Event::Configure { serial, .. } = event {
                 layer_surface.ack_configure(serial);
@@ -75,6 +76,7 @@ impl Surface {
 
         Ok(Self {
             surface,
+            layer_surface,
             pool,
             dimensions: (width, height),
         })
@@ -99,9 +101,16 @@ impl Surface {
     }
 }
 
+impl Drop for Surface {
+    fn drop(&mut self) {
+        self.layer_surface.destroy();
+        self.surface.destroy();
+    }
+}
+
 pub fn wayland(rx: mpsc::Receiver<WallpaperData>) -> Result<(), Box<dyn Error>> {
-    let (env, _, queue) =
-        new_default_environment!(Env, fields = [layer_shell: SimpleGlobal::new()])?;
+    let (env, display, queue) =
+        new_default_environment!(Env, fields = [layer_shell: SimpleGlobal::new(),]).unwrap();
 
     let layer_shell = env.require_global::<zwlr_layer_shell_v1::ZwlrLayerShellV1>();
     let all_outputs = env.get_all_outputs();
@@ -118,6 +127,7 @@ pub fn wayland(rx: mpsc::Receiver<WallpaperData>) -> Result<(), Box<dyn Error>> 
     WaylandSource::new(queue).quick_insert(event_loop.handle())?;
 
     loop {
+        display.flush()?;
         // If output_num that doesn't exist is passed there will be no new event to dispatch
         // which will cause event_loop to wait infinitelly unless timeout is set
         event_loop.dispatch(Some(Duration::ZERO), &mut ())?;

@@ -8,29 +8,20 @@
     };
   };
 
-  outputs = {
-    self,
-    utils,
-    nixpkgs,
-    fenix,
-  }:
-    utils.lib.eachDefaultSystem (system: let
-      pkgs = nixpkgs.legacyPackages.${system};
-      rust = fenix.packages.${system};
-      lib = pkgs.lib;
-    in {
-      devShell = pkgs.mkShell {
-        buildInputs = with pkgs;
-        with llvmPackages; [
-          clang
-          rust.latest.toolchain
-          pkg-config
-          xorg.libxcb
-        ];
+  outputs = { self, utils, nixpkgs, fenix, }: utils.lib.eachDefaultSystem (system: let 
+    pkgs = nixpkgs.legacyPackages.${system};
+    rust = fenix.packages.${system};
+    lib = pkgs.lib;
+  in {
+    devShell = pkgs.mkShell {
+      buildInputs = with pkgs; with llvmPackages;  [
+        clang rust.latest.toolchain pkg-config
+        libxkbcommon xorg.libxcb
+      ];
 
-        LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
-        RUST_BACKTRACE = 1;
-        RUSTFLAGS = "-C target-cpu=native";
-      };
-    });
+      LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
+      RUST_BACKTRACE = 1;
+      RUSTFLAGS = "-C target-cpu=native";
+    };
+  });
 }
