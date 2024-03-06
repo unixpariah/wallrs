@@ -104,6 +104,8 @@ where
             .expect("It will always be Some at this point")
             // If this throws it means that rx was dropped due to error in the background thread
             .send(wallpaper_data)?;
+
+        drop(sender);
     }
 
     Ok(())
