@@ -1,7 +1,6 @@
-use std::{error::Error, sync::mpsc};
-
 use crate::{helpers::resize_image, WallpaperData};
 use image::RgbImage;
+use rayon::prelude::*;
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
     delegate_compositor, delegate_layer, delegate_output, delegate_registry, delegate_shm,
@@ -17,10 +16,11 @@ use smithay_client_toolkit::{
     },
     shm::{slot::SlotPool, Shm, ShmHandler},
 };
+use std::{error::Error, sync::mpsc};
 use wayland_client::{
     globals::{registry_queue_init, GlobalList},
     protocol::{wl_output, wl_shm, wl_surface},
-    Connection, EventQueue, QueueHandle,
+    Connection, QueueHandle,
 };
 
 struct Surface {
@@ -114,9 +114,7 @@ impl Surface {
         let compositor = CompositorState::bind(globals, qh)?;
         let layer_shell = LayerShell::bind(globals, qh)?;
         let shm = Shm::bind(globals, qh)?;
-
         let output_state = OutputState::new(globals, qh);
-
         let layers = output_state
             .outputs()
             .map(|output| {
@@ -147,42 +145,40 @@ impl Surface {
         })
     }
 
-    fn draw(
-        &mut self,
-        image: RgbImage,
-        event_queue: &mut EventQueue<Self>,
-    ) -> Result<(), Box<dyn Error>> {
-        let _ = event_queue.roundtrip(self);
-        let output = self
-            .output_state
-            .outputs()
-            .next()
-            .ok_or("No outputs found")?;
-        let (width, height) = self
-            .output_state
-            .info(&output)
-            .ok_or("Output info not available")?
-            .logical_size
-            .ok_or("Logical size not found")?;
-        let stride = width * 4;
+    fn draw(&mut self, image: RgbImage, output_num: Vec<u8>) {
+        let outputs: Vec<_> = self.output_state.outputs().collect();
+        let _ = outputs.par_iter().enumerate().try_for_each(
+            |(index, output)| -> Result<(), Box<dyn Error + Send + Sync>> {
+                if !output_num.is_empty() && !output_num.contains(&(index as u8)) {
+                    return Ok(());
+                }
 
-        let mut pool = SlotPool::new(width as usize * height as usize * 4, &self.shm)?;
+                let info = self
+                    .output_state
+                    .info(output)
+                    .ok_or("Couldn't get output info")?;
+                let (width, height) = info.logical_size.ok_or("Logical size not found")?;
+                let stride = width * 4;
+                let pool_size = (width * height * 4) as usize;
+                let mut pool = SlotPool::new(pool_size, &self.shm)?;
 
-        if let Ok((buffer, canvas)) =
-            pool.create_buffer(width, height, stride, wl_shm::Format::Xrgb8888)
-        {
-            if let Ok(image) = resize_image(&image, width as u32, height as u32) {
-                canvas.copy_from_slice(&image);
-            }
+                if let Ok((buffer, canvas)) =
+                    pool.create_buffer(width, height, stride, wl_shm::Format::Xrgb8888)
+                {
+                    if let Ok(resized_image) = resize_image(&image, width as u32, height as u32) {
+                        canvas.copy_from_slice(&resized_image);
+                    }
 
-            self.layers.iter().for_each(|layer| {
-                layer.set_size(width as u32, height as u32);
-                layer.wl_surface().damage_buffer(0, 0, width, height);
-                layer.wl_surface().attach(Some(buffer.wl_buffer()), 0, 0);
-                layer.commit();
-            });
-        }
-        Ok(())
+                    let layer: &LayerSurface = &self.layers[index];
+                    layer.set_size(width as u32, height as u32);
+                    layer.wl_surface().damage_buffer(0, 0, width, height);
+                    layer.wl_surface().attach(Some(buffer.wl_buffer()), 0, 0);
+                    layer.commit();
+                }
+
+                Ok(())
+            },
+        );
     }
 }
 
@@ -197,7 +193,8 @@ pub fn wayland(rx: mpsc::Receiver<WallpaperData>) -> Result<(), Box<dyn Error>> 
     loop {
         event_queue.blocking_dispatch(&mut surface)?;
         if let Ok(wallpaper_data) = rx.recv() {
-            let _ = surface.draw(wallpaper_data.image, &mut event_queue);
+            let _ = event_queue.roundtrip(&mut surface);
+            surface.draw(wallpaper_data.image, wallpaper_data.output_num);
         }
     }
 }
@@ -205,9 +202,7 @@ pub fn wayland(rx: mpsc::Receiver<WallpaperData>) -> Result<(), Box<dyn Error>> 
 delegate_compositor!(Surface);
 delegate_output!(Surface);
 delegate_shm!(Surface);
-
 delegate_layer!(Surface);
-
 delegate_registry!(Surface);
 
 impl ProvidesRegistryState for Surface {

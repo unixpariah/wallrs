@@ -1,6 +1,6 @@
 [package]
 name = "wlrs"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2021"
 description = "Rust library for managing wallpapers"
 license = "MIT"
@@ -13,6 +13,8 @@ categories = ["api-bindings"]
 [dependencies]
 fast_image_resize = "3.0.3"
 image = "0.24.8"
+lazy_static = "1.4.0"
+rayon = "1.9.0"
 smithay-client-toolkit = { version = "0.18.1", default-features = false }
 wayland-client = "0.31.2"
 x11rb = { version = "0.13.0", features = ["randr"] }
