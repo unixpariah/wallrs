@@ -6,7 +6,6 @@ use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
     delegate_compositor, delegate_layer, delegate_output, delegate_registry, delegate_shm,
     output::{OutputHandler, OutputState},
-    reexports::{calloop, calloop_wayland_source::WaylandSource},
     registry::{ProvidesRegistryState, RegistryState},
     registry_handlers,
     shell::{
@@ -24,7 +23,7 @@ use wayland_client::{
     Connection, QueueHandle,
 };
 
-struct SimpleLayer {
+struct Surface {
     registry_state: RegistryState,
     output_state: OutputState,
     shm: Shm,
@@ -34,7 +33,7 @@ struct SimpleLayer {
     height: u32,
 }
 
-impl CompositorHandler for SimpleLayer {
+impl CompositorHandler for Surface {
     fn scale_factor_changed(
         &mut self,
         _conn: &Connection,
@@ -63,7 +62,7 @@ impl CompositorHandler for SimpleLayer {
     }
 }
 
-impl OutputHandler for SimpleLayer {
+impl OutputHandler for Surface {
     fn output_state(&mut self) -> &mut OutputState {
         &mut self.output_state
     }
@@ -93,7 +92,7 @@ impl OutputHandler for SimpleLayer {
     }
 }
 
-impl LayerShellHandler for SimpleLayer {
+impl LayerShellHandler for Surface {
     fn closed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _layer: &LayerSurface) {}
 
     fn configure(
@@ -107,13 +106,13 @@ impl LayerShellHandler for SimpleLayer {
     }
 }
 
-impl ShmHandler for SimpleLayer {
+impl ShmHandler for Surface {
     fn shm_state(&mut self) -> &mut Shm {
         &mut self.shm
     }
 }
 
-impl SimpleLayer {
+impl Surface {
     fn new(
         registry_state: RegistryState,
         output_state: OutputState,
@@ -125,12 +124,13 @@ impl SimpleLayer {
         let pool = SlotPool::new(width as usize * height as usize * 4, &shm)?;
 
         layer.set_anchor(Anchor::all());
+        layer.set_exclusive_zone(-1);
         layer.set_keyboard_interactivity(KeyboardInteractivity::None);
         layer.set_size(width, height);
 
         layer.commit();
 
-        Ok(SimpleLayer {
+        Ok(Self {
             registry_state,
             output_state,
             shm,
@@ -141,7 +141,7 @@ impl SimpleLayer {
         })
     }
 
-    fn draw(&mut self, qh: &QueueHandle<Self>, image: RgbImage) {
+    fn draw(&mut self, image: RgbImage) {
         let width = self.width;
         let height = self.height;
         let stride = self.width as i32 * 4;
@@ -160,8 +160,7 @@ impl SimpleLayer {
                 .damage_buffer(0, 0, width as i32, height as i32);
             self.layer
                 .wl_surface()
-                .frame(qh, self.layer.wl_surface().clone());
-            let _ = buffer.attach_to(self.layer.wl_surface());
+                .attach(Some(buffer.wl_buffer()), 0, 0);
             self.layer.commit();
         }
     }
@@ -170,43 +169,36 @@ impl SimpleLayer {
 pub fn wayland(rx: mpsc::Receiver<WallpaperData>) -> Result<(), Box<dyn Error>> {
     let conn = Connection::connect_to_env()?;
 
-    let (globals, event_queue) = registry_queue_init(&conn)?;
+    let (globals, mut event_queue) = registry_queue_init(&conn)?;
     let qh = event_queue.handle();
 
     let compositor = CompositorState::bind(&globals, &qh)?;
     let layer_shell = LayerShell::bind(&globals, &qh)?;
     let shm = Shm::bind(&globals, &qh)?;
 
+    let output_state = OutputState::new(&globals, &qh);
     let surface = compositor.create_surface(&qh);
     let layer =
         layer_shell.create_layer_surface(&qh, surface, Layer::Background, Some("wlrs"), None);
-
-    let mut simple_layer = SimpleLayer::new(
-        RegistryState::new(&globals),
-        OutputState::new(&globals, &qh),
-        shm,
-        layer,
-    )?;
-    let mut event_loop = calloop::EventLoop::<SimpleLayer>::try_new()?;
-    WaylandSource::new(conn, event_queue).insert(event_loop.handle())?;
+    let mut surface = Surface::new(RegistryState::new(&globals), output_state, shm, layer)?;
 
     loop {
-        event_loop.dispatch(None, &mut simple_layer)?;
+        event_queue.blocking_dispatch(&mut surface)?;
         if let Ok(wallpaper_data) = rx.recv() {
-            simple_layer.draw(&qh, wallpaper_data.image);
+            surface.draw(wallpaper_data.image);
         }
     }
 }
 
-delegate_compositor!(SimpleLayer);
-delegate_output!(SimpleLayer);
-delegate_shm!(SimpleLayer);
+delegate_compositor!(Surface);
+delegate_output!(Surface);
+delegate_shm!(Surface);
 
-delegate_layer!(SimpleLayer);
+delegate_layer!(Surface);
 
-delegate_registry!(SimpleLayer);
+delegate_registry!(Surface);
 
-impl ProvidesRegistryState for SimpleLayer {
+impl ProvidesRegistryState for Surface {
     fn registry(&mut self) -> &mut RegistryState {
         &mut self.registry_state
     }
