@@ -69,7 +69,7 @@ pub fn resize_image(image: &RgbImage, width: u32, height: u32) -> Result<Vec<u8>
     )?)
 }
 
-pub fn pad(mut img: RgbImage, trg_w: u32, trg_h: u32) -> Result<Vec<u8>, String> {
+fn pad(mut img: RgbImage, trg_w: u32, trg_h: u32) -> Result<Vec<u8>, String> {
     let color = [0, 0, 0];
 
     if img.dimensions() == (trg_w, trg_h) {

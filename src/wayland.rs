@@ -1,139 +1,214 @@
+use std::{error::Error, sync::mpsc};
+
 use crate::{helpers::resize_image, WallpaperData};
 use image::RgbImage;
 use smithay_client_toolkit::{
-    default_environment,
-    environment::SimpleGlobal,
-    new_default_environment,
-    output::with_output_info,
-    reexports::{
-        calloop,
-        client::{
-            protocol::{
-                wl_output::{self, WlOutput},
-                wl_shm, wl_surface,
-            },
-            Attached,
+    compositor::{CompositorHandler, CompositorState},
+    delegate_compositor, delegate_layer, delegate_output, delegate_registry, delegate_shm,
+    output::{OutputHandler, OutputState},
+    reexports::{calloop, calloop_wayland_source::WaylandSource},
+    registry::{ProvidesRegistryState, RegistryState},
+    registry_handlers,
+    shell::{
+        wlr_layer::{
+            Anchor, KeyboardInteractivity, Layer, LayerShell, LayerShellHandler, LayerSurface,
+            LayerSurfaceConfigure,
         },
-        protocols::wlr::unstable::layer_shell::v1::client::{
-            zwlr_layer_shell_v1,
-            zwlr_layer_surface_v1::{self, KeyboardInteractivity},
-        },
+        WaylandSurface,
     },
-    shm::AutoMemPool,
-    WaylandSource,
+    shm::{slot::SlotPool, Shm, ShmHandler},
 };
-use std::{error::Error, sync::mpsc, time::Duration};
+use wayland_client::{
+    globals::registry_queue_init,
+    protocol::{wl_output, wl_shm, wl_surface},
+    Connection, QueueHandle,
+};
 
-default_environment!(Env,
-    fields = [
-        layer_shell: SimpleGlobal<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
-    ],
-    singles = [
-        zwlr_layer_shell_v1::ZwlrLayerShellV1 => layer_shell
-    ],
-);
-
-struct Surface {
-    surface: wl_surface::WlSurface,
-    pool: AutoMemPool,
-    dimensions: (u32, u32),
+struct SimpleLayer {
+    registry_state: RegistryState,
+    output_state: OutputState,
+    shm: Shm,
+    layer: LayerSurface,
+    pool: SlotPool,
+    width: u32,
+    height: u32,
 }
 
-impl Surface {
+impl CompositorHandler for SimpleLayer {
+    fn scale_factor_changed(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _surface: &wl_surface::WlSurface,
+        _new_factor: i32,
+    ) {
+    }
+
+    fn transform_changed(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _surface: &wl_surface::WlSurface,
+        _new_transform: wl_output::Transform,
+    ) {
+    }
+
+    fn frame(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _surface: &wl_surface::WlSurface,
+        _time: u32,
+    ) {
+    }
+}
+
+impl OutputHandler for SimpleLayer {
+    fn output_state(&mut self) -> &mut OutputState {
+        &mut self.output_state
+    }
+
+    fn new_output(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _output: wl_output::WlOutput,
+    ) {
+    }
+
+    fn update_output(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _output: wl_output::WlOutput,
+    ) {
+    }
+
+    fn output_destroyed(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _output: wl_output::WlOutput,
+    ) {
+    }
+}
+
+impl LayerShellHandler for SimpleLayer {
+    fn closed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _layer: &LayerSurface) {}
+
+    fn configure(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _layer: &LayerSurface,
+        _configure: LayerSurfaceConfigure,
+        _serial: u32,
+    ) {
+    }
+}
+
+impl ShmHandler for SimpleLayer {
+    fn shm_state(&mut self) -> &mut Shm {
+        &mut self.shm
+    }
+}
+
+impl SimpleLayer {
     fn new(
-        output: &wl_output::WlOutput,
-        surface: wl_surface::WlSurface,
-        layer_shell: &Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
-        pool: AutoMemPool,
+        registry_state: RegistryState,
+        output_state: OutputState,
+        shm: Shm,
+        layer: LayerSurface,
     ) -> Result<Self, Box<dyn Error>> {
-        let (width, height) = with_output_info(output, |info| {
-            (
-                info.modes[0].dimensions.0 as u32,
-                info.modes[0].dimensions.1 as u32,
-            )
-        })
-        .ok_or("Could not get output info")?;
+        let (width, height) = (1920, 1080);
 
-        let layer_surface = layer_shell.get_layer_surface(
-            &surface,
-            Some(output),
-            zwlr_layer_shell_v1::Layer::Background,
-            "wlrs".to_owned(),
-        );
-        layer_surface.set_anchor(zwlr_layer_surface_v1::Anchor::all());
-        layer_surface.set_exclusive_zone(-1);
-        layer_surface.set_margin(0, 0, 0, 0);
-        layer_surface.set_keyboard_interactivity(KeyboardInteractivity::None);
-        layer_surface.set_size(width, height);
-        layer_surface.quick_assign(move |layer_surface, event, _| {
-            if let zwlr_layer_surface_v1::Event::Configure { serial, .. } = event {
-                layer_surface.ack_configure(serial);
-            }
-        });
+        let pool = SlotPool::new(width as usize * height as usize * 4, &shm)?;
 
-        surface.commit();
+        layer.set_anchor(Anchor::all());
+        layer.set_keyboard_interactivity(KeyboardInteractivity::None);
+        layer.set_size(width, height);
 
-        Ok(Self {
-            surface,
+        layer.commit();
+
+        Ok(SimpleLayer {
+            registry_state,
+            output_state,
+            shm,
             pool,
-            dimensions: (width, height),
+            width,
+            height,
+            layer,
         })
     }
 
-    fn draw(&mut self, image: &RgbImage) {
-        let stride = 4 * self.dimensions.0 as i32;
-        let width = self.dimensions.0 as i32;
-        let height = self.dimensions.1 as i32;
-        if let Ok((canvas, buffer)) =
-            self.pool
-                .buffer(width, height, stride, wl_shm::Format::Xrgb8888)
-        {
-            if let Ok(image) = resize_image(image, width as u32, height as u32) {
+    fn draw(&mut self, qh: &QueueHandle<Self>, image: RgbImage) {
+        let width = self.width;
+        let height = self.height;
+        let stride = self.width as i32 * 4;
+        if let Ok((buffer, canvas)) = self.pool.create_buffer(
+            width as i32,
+            height as i32,
+            stride,
+            wl_shm::Format::Xrgb8888,
+        ) {
+            if let Ok(image) = resize_image(&image, width, height) {
                 canvas.copy_from_slice(&image);
-            };
+            }
 
-            self.surface.attach(Some(&buffer), 0, 0);
-            self.surface.damage_buffer(0, 0, width, height);
-            self.surface.commit();
-        };
+            self.layer
+                .wl_surface()
+                .damage_buffer(0, 0, width as i32, height as i32);
+            self.layer
+                .wl_surface()
+                .frame(qh, self.layer.wl_surface().clone());
+            let _ = buffer.attach_to(self.layer.wl_surface());
+            self.layer.commit();
+        }
     }
 }
 
 pub fn wayland(rx: mpsc::Receiver<WallpaperData>) -> Result<(), Box<dyn Error>> {
-    let (env, _, queue) =
-        new_default_environment!(Env, fields = [layer_shell: SimpleGlobal::new()])?;
+    let conn = Connection::connect_to_env()?;
 
-    let layer_shell = env.require_global::<zwlr_layer_shell_v1::ZwlrLayerShellV1>();
-    let all_outputs = env.get_all_outputs();
-    let outputs: Vec<&WlOutput> = all_outputs.iter().collect();
-    let mut surfaces: Vec<Result<Surface, Box<dyn Error>>> = outputs
-        .iter()
-        .map(|output| {
-            let surface = env.create_surface().detach();
-            let pool = env.create_auto_pool()?;
-            Surface::new(output, surface, &layer_shell, pool)
-        })
-        .collect();
-    let mut event_loop = calloop::EventLoop::<()>::try_new()?;
-    WaylandSource::new(queue).quick_insert(event_loop.handle())?;
+    let (globals, event_queue) = registry_queue_init(&conn)?;
+    let qh = event_queue.handle();
+
+    let compositor = CompositorState::bind(&globals, &qh)?;
+    let layer_shell = LayerShell::bind(&globals, &qh)?;
+    let shm = Shm::bind(&globals, &qh)?;
+
+    let surface = compositor.create_surface(&qh);
+    let layer =
+        layer_shell.create_layer_surface(&qh, surface, Layer::Background, Some("wlrs"), None);
+
+    let mut simple_layer = SimpleLayer::new(
+        RegistryState::new(&globals),
+        OutputState::new(&globals, &qh),
+        shm,
+        layer,
+    )?;
+    let mut event_loop = calloop::EventLoop::<SimpleLayer>::try_new()?;
+    WaylandSource::new(conn, event_queue).insert(event_loop.handle())?;
 
     loop {
-        // If output_num that doesn't exist is passed there will be no new event to dispatch
-        // which will cause event_loop to wait infinitelly unless timeout is set
-        event_loop.dispatch(Some(Duration::ZERO), &mut ())?;
+        event_loop.dispatch(None, &mut simple_layer)?;
         if let Ok(wallpaper_data) = rx.recv() {
-            surfaces
-                .iter_mut()
-                .enumerate()
-                .for_each(|(index, surface)| {
-                    if let Ok(surface) = surface {
-                        if wallpaper_data.output_num.is_empty()
-                            || wallpaper_data.output_num.contains(&(index as u8))
-                        {
-                            surface.draw(&wallpaper_data.image);
-                        }
-                    }
-                });
+            simple_layer.draw(&qh, wallpaper_data.image);
         }
     }
+}
+
+delegate_compositor!(SimpleLayer);
+delegate_output!(SimpleLayer);
+delegate_shm!(SimpleLayer);
+
+delegate_layer!(SimpleLayer);
+
+delegate_registry!(SimpleLayer);
+
+impl ProvidesRegistryState for SimpleLayer {
+    fn registry(&mut self) -> &mut RegistryState {
+        &mut self.registry_state
+    }
+    registry_handlers![OutputState];
 }
