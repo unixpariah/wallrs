@@ -20,7 +20,7 @@ use smithay_client_toolkit::{
 use wayland_client::{
     globals::registry_queue_init,
     protocol::{wl_output, wl_shm, wl_surface},
-    Connection, QueueHandle,
+    Connection, EventQueue, QueueHandle,
 };
 
 struct Surface {
@@ -28,9 +28,6 @@ struct Surface {
     output_state: OutputState,
     shm: Shm,
     layer: LayerSurface,
-    pool: SlotPool,
-    width: u32,
-    height: u32,
 }
 
 impl CompositorHandler for Surface {
@@ -121,8 +118,6 @@ impl Surface {
     ) -> Result<Self, Box<dyn Error>> {
         let (width, height) = (1920, 1080);
 
-        let pool = SlotPool::new(width as usize * height as usize * 4, &shm)?;
-
         layer.set_anchor(Anchor::all());
         layer.set_exclusive_zone(-1);
         layer.set_keyboard_interactivity(KeyboardInteractivity::None);
@@ -134,30 +129,30 @@ impl Surface {
             registry_state,
             output_state,
             shm,
-            pool,
-            width,
-            height,
             layer,
         })
     }
 
-    fn draw(&mut self, image: RgbImage) {
-        let width = self.width;
-        let height = self.height;
-        let stride = self.width as i32 * 4;
-        if let Ok((buffer, canvas)) = self.pool.create_buffer(
-            width as i32,
-            height as i32,
-            stride,
-            wl_shm::Format::Xrgb8888,
-        ) {
-            if let Ok(image) = resize_image(&image, width, height) {
+    fn draw(&mut self, image: RgbImage, event_queue: &mut EventQueue<Self>) {
+        let _ = event_queue.roundtrip(self);
+        let output = self.output_state.outputs().next().unwrap();
+        let (width, height) = self
+            .output_state
+            .info(&output)
+            .unwrap()
+            .logical_size
+            .unwrap();
+        let stride = width * 4;
+
+        let mut pool = SlotPool::new(width as usize * height as usize * 4, &self.shm).unwrap();
+
+        if let Ok((buffer, canvas)) =
+            pool.create_buffer(width, height, stride, wl_shm::Format::Xrgb8888)
+        {
+            if let Ok(image) = resize_image(&image, width as u32, height as u32) {
                 canvas.copy_from_slice(&image);
             }
-
-            self.layer
-                .wl_surface()
-                .damage_buffer(0, 0, width as i32, height as i32);
+            self.layer.wl_surface().damage_buffer(0, 0, width, height);
             self.layer
                 .wl_surface()
                 .attach(Some(buffer.wl_buffer()), 0, 0);
@@ -178,14 +173,16 @@ pub fn wayland(rx: mpsc::Receiver<WallpaperData>) -> Result<(), Box<dyn Error>> 
 
     let output_state = OutputState::new(&globals, &qh);
     let surface = compositor.create_surface(&qh);
+
     let layer =
         layer_shell.create_layer_surface(&qh, surface, Layer::Background, Some("wlrs"), None);
+
     let mut surface = Surface::new(RegistryState::new(&globals), output_state, shm, layer)?;
 
     loop {
         event_queue.blocking_dispatch(&mut surface)?;
         if let Ok(wallpaper_data) = rx.recv() {
-            surface.draw(wallpaper_data.image);
+            surface.draw(wallpaper_data.image, &mut event_queue);
         }
     }
 }
