@@ -9,8 +9,7 @@ use smithay_client_toolkit::{
     registry_handlers,
     shell::{
         wlr_layer::{
-            Anchor, KeyboardInteractivity, Layer, LayerShell, LayerShellHandler, LayerSurface,
-            LayerSurfaceConfigure,
+            Anchor, Layer, LayerShell, LayerShellHandler, LayerSurface, LayerSurfaceConfigure,
         },
         WaylandSurface,
     },
@@ -23,83 +22,73 @@ use wayland_client::{
     Connection, QueueHandle,
 };
 
+struct OutputDetails {
+    output_id: u32,
+    layer_surface: LayerSurface,
+    output: wl_output::WlOutput,
+}
+
 struct Surface {
     registry_state: RegistryState,
     output_state: OutputState,
     shm: Shm,
-    layers: Vec<LayerSurface>,
+    compositor_state: CompositorState,
+    layer_shell: LayerShell,
+    outputs: Vec<OutputDetails>,
 }
 
 impl Surface {
-    fn new(globals: &GlobalList, qh: &QueueHandle<Self>) -> Result<Self, Box<dyn Error>> {
-        let compositor = CompositorState::bind(globals, qh)?;
-        let layer_shell = LayerShell::bind(globals, qh)?;
-        let shm = Shm::bind(globals, qh)?;
-        let output_state = OutputState::new(globals, qh);
-        let layers = output_state
-            .outputs()
-            .map(|output| {
-                let surface = compositor.create_surface(qh);
-                let layer = layer_shell.create_layer_surface(
-                    qh,
-                    surface,
-                    Layer::Background,
-                    Some("wlrs"),
-                    Some(&output),
-                );
+    fn new(globals: &GlobalList, qh: &wayland_client::QueueHandle<Self>) -> Self {
+        let compositor_state =
+            CompositorState::bind(globals, qh).expect("Failed to bind compositor");
+        let layer_shell = LayerShell::bind(globals, qh).expect(
+            "Failed to bind layer shell, check if the compositor supports layer shell protocol.",
+        );
+        let shm = Shm::bind(globals, qh).expect("Failed to bind shm");
 
-                layer.set_anchor(Anchor::all());
-                layer.set_exclusive_zone(-1);
-                layer.set_keyboard_interactivity(KeyboardInteractivity::None);
-
-                layer.commit();
-
-                layer
-            })
-            .collect();
-
-        Ok(Self {
+        Self {
+            compositor_state,
+            layer_shell,
+            output_state: OutputState::new(globals, qh),
             registry_state: RegistryState::new(globals),
-            output_state,
             shm,
-            layers,
-        })
+            outputs: Vec::new(),
+        }
     }
 
-    fn draw(&mut self, image: RgbImage, output_num: Vec<u8>) {
-        let outputs: Vec<_> = self.output_state.outputs().collect();
-        let _ = outputs.par_iter().enumerate().try_for_each(
-            |(index, output)| -> Result<(), Box<dyn Error + Send + Sync>> {
-                if !output_num.is_empty() && !output_num.contains(&(index as u8)) {
-                    return Ok(());
+    fn draw(&mut self, image: RgbImage, output_num: Vec<u8>) -> Result<(), Box<dyn Error + Send>> {
+        self.outputs
+            .par_iter()
+            .enumerate()
+            .try_for_each(|(index, output)| {
+                if !output_num.contains(&(index as u8)) && !output_num.is_empty() {
+                    return Ok::<(), Box<dyn Error + Send>>(());
                 }
 
-                let info = self
-                    .output_state
-                    .info(output)
-                    .ok_or("Couldn't get output info")?;
-                let (width, height) = info.logical_size.ok_or("Logical size not found")?;
-                let stride = width * 4;
-                let pool_size = (width * height * 4) as usize;
-                let mut pool = SlotPool::new(pool_size, &self.shm)?;
+                if let Some(info) = self.output_state.info(&output.output) {
+                    if let Some((width, height)) = info.logical_size {
+                        let mut pool = SlotPool::new((width * height * 4) as usize, &self.shm)
+                            .map_err(|e| -> Box<dyn std::error::Error + Send> { Box::new(e) })?;
+                        if let Ok((buffer, canvas)) =
+                            pool.create_buffer(width, height, width * 4, wl_shm::Format::Xrgb8888)
+                        {
+                            if let Ok(resized_image) =
+                                resize_image(&image, width as u32, height as u32)
+                            {
+                                canvas.copy_from_slice(&resized_image);
+                            }
 
-                if let Ok((buffer, canvas)) =
-                    pool.create_buffer(width, height, stride, wl_shm::Format::Xrgb8888)
-                {
-                    if let Ok(resized_image) = resize_image(&image, width as u32, height as u32) {
-                        canvas.copy_from_slice(&resized_image);
+                            let layer = &output.layer_surface;
+                            layer.set_size(width as u32, height as u32);
+                            layer.wl_surface().damage_buffer(0, 0, width, height);
+                            layer.wl_surface().attach(Some(buffer.wl_buffer()), 0, 0);
+                            layer.commit();
+                        };
                     }
-
-                    let layer: &LayerSurface = &self.layers[index];
-                    layer.set_size(width as u32, height as u32);
-                    layer.wl_surface().damage_buffer(0, 0, width, height);
-                    layer.wl_surface().attach(Some(buffer.wl_buffer()), 0, 0);
-                    layer.commit();
                 }
 
-                Ok(())
-            },
-        );
+                Ok::<(), Box<dyn Error + Send>>(())
+            })
     }
 }
 
@@ -140,9 +129,32 @@ impl OutputHandler for Surface {
     fn new_output(
         &mut self,
         _conn: &Connection,
-        _qh: &QueueHandle<Self>,
-        _output: wl_output::WlOutput,
+        qh: &QueueHandle<Self>,
+        output: wl_output::WlOutput,
     ) {
+        let surface = self.compositor_state.create_surface(qh);
+        let layer = self.layer_shell.create_layer_surface(
+            qh,
+            surface,
+            Layer::Bottom,
+            Some("ssb"),
+            Some(&output),
+        );
+
+        if let Some(info) = self.output_state.info(&output) {
+            if let Some((width, height)) = info.logical_size {
+                layer.set_size(width as u32, height as u32);
+                layer.set_anchor(Anchor::all());
+                layer.set_exclusive_zone(height);
+                layer.commit();
+
+                self.outputs.push(OutputDetails {
+                    output_id: info.id,
+                    layer_surface: layer,
+                    output,
+                });
+            }
+        }
     }
 
     fn update_output(
@@ -157,8 +169,11 @@ impl OutputHandler for Surface {
         &mut self,
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
-        _output: wl_output::WlOutput,
+        output: wl_output::WlOutput,
     ) {
+        if let Some(output_info) = self.output_state.info(&output) {
+            self.outputs.retain(|info| info.output_id != output_info.id);
+        }
     }
 }
 
@@ -187,13 +202,13 @@ pub fn wayland(rx: mpsc::Receiver<WallpaperData>) -> Result<(), Box<dyn Error>> 
     let (globals, mut event_queue) = registry_queue_init(&conn)?;
     let qh = event_queue.handle();
 
-    let mut surface = Surface::new(&globals, &qh)?;
+    let mut surface = Surface::new(&globals, &qh);
 
     loop {
         event_queue.blocking_dispatch(&mut surface)?;
         if let Ok(wallpaper_data) = rx.recv() {
             let _ = event_queue.roundtrip(&mut surface);
-            surface.draw(wallpaper_data.image, wallpaper_data.output_num);
+            let _ = surface.draw(wallpaper_data.image, wallpaper_data.output_num);
         }
     }
 }
