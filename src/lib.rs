@@ -101,7 +101,7 @@ where
         let sender = SENDER.lock().map_err(|_| "Failed to acquire lock")?;
         sender
             .as_ref()
-            .unwrap() // It will always be Some at this point
+            .expect("It will always be Some at this point")
             // If this throws it means that rx was dropped due to error in the background thread
             .send(wallpaper_data)?;
     }
