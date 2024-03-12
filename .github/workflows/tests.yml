@@ -12,7 +12,7 @@ jobs:
   build:
     strategy:
       matrix:
-        environment: [X11]
+        environment: [Wayland, X11]
     runs-on: ubuntu-latest
 
     steps:
@@ -21,6 +21,18 @@ jobs:
         with:
           path: ~/.cargo
           key: cargo-stable
+
+      - name: Install system dependencies (Wayland)
+        if: matrix.environment == 'Wayland'
+        run: sudo apt-get install libwayland-dev
+
+      - name: Run tests (Wayland)
+        if: matrix.environment == 'Wayland'
+        env:
+          LLVM_PROFILE_FILE: grcov-%p-%m.profraw
+          RUSTFLAGS: -Cinstrument-coverage
+          XDG_SESSION_TYPE: wayland
+        run: cargo test
 
       - name: Install system dependencies (X11)
         if: matrix.environment == 'X11'

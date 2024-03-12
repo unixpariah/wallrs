@@ -148,6 +148,8 @@ impl OutputHandler for Surface {
                 layer.set_exclusive_zone(height);
                 layer.commit();
 
+                println!("Output {} added", info.id);
+
                 self.outputs.push(OutputDetails {
                     output_id: info.id,
                     layer_surface: layer,
@@ -204,10 +206,10 @@ pub fn wayland(rx: mpsc::Receiver<WallpaperData>) -> Result<(), Box<dyn Error>> 
 
     let mut surface = Surface::new(&globals, &qh);
 
+    event_queue.blocking_dispatch(&mut surface)?;
     loop {
-        event_queue.blocking_dispatch(&mut surface)?;
+        event_queue.roundtrip(&mut surface)?;
         if let Ok(wallpaper_data) = rx.recv() {
-            let _ = event_queue.roundtrip(&mut surface);
             let _ = surface.draw(wallpaper_data.image, wallpaper_data.output_num);
         }
     }
