@@ -1,6 +1,5 @@
 use crate::{helpers::resize_image, WallpaperData};
 use image::RgbImage;
-use rayon::prelude::*;
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
     delegate_compositor, delegate_layer, delegate_output, delegate_registry, delegate_shm,
@@ -15,7 +14,7 @@ use smithay_client_toolkit::{
     },
     shm::{slot::SlotPool, Shm, ShmHandler},
 };
-use std::{error::Error, sync::mpsc};
+use std::{collections::HashMap, error::Error, sync::mpsc};
 use wayland_client::{
     globals::{registry_queue_init, GlobalList},
     protocol::{wl_output, wl_shm, wl_surface},
@@ -26,6 +25,7 @@ struct OutputDetails {
     output_id: u32,
     layer_surface: LayerSurface,
     output: wl_output::WlOutput,
+    configured: bool,
 }
 
 struct Surface {
@@ -35,6 +35,7 @@ struct Surface {
     compositor_state: CompositorState,
     layer_shell: LayerShell,
     outputs: Vec<OutputDetails>,
+    cache: HashMap<i32, Vec<u8>>,
 }
 
 impl Surface {
@@ -53,12 +54,13 @@ impl Surface {
             registry_state: RegistryState::new(globals),
             shm,
             outputs: Vec::new(),
+            cache: HashMap::new(),
         }
     }
 
     fn draw(&mut self, image: RgbImage, output_num: Vec<u8>) -> Result<(), Box<dyn Error + Send>> {
         self.outputs
-            .par_iter()
+            .iter()
             .enumerate()
             .try_for_each(|(index, output)| {
                 if !output_num.contains(&(index as u8)) && !output_num.is_empty() {
@@ -72,10 +74,16 @@ impl Surface {
                         if let Ok((buffer, canvas)) =
                             pool.create_buffer(width, height, width * 4, wl_shm::Format::Xrgb8888)
                         {
-                            if let Ok(resized_image) =
-                                resize_image(&image, width as u32, height as u32)
-                            {
-                                canvas.copy_from_slice(&resized_image);
+                            if self.cache.get(&width).is_none() {
+                                if let Ok(resized_image) =
+                                    resize_image(&image, width as u32, height as u32)
+                                {
+                                    self.cache.insert(width, resized_image);
+                                }
+                            }
+
+                            if let Some(img) = self.cache.get(&width) {
+                                canvas.copy_from_slice(img);
                             }
 
                             let layer = &output.layer_surface;
@@ -152,6 +160,7 @@ impl OutputHandler for Surface {
                     output_id: info.id,
                     layer_surface: layer,
                     output,
+                    configured: false,
                 });
             }
         }
@@ -196,6 +205,7 @@ impl ShmHandler for Surface {
         &mut self.shm
     }
 }
+
 pub fn wayland(rx: mpsc::Receiver<WallpaperData>) -> Result<(), Box<dyn Error>> {
     let conn = Connection::connect_to_env()?;
 
@@ -206,10 +216,17 @@ pub fn wayland(rx: mpsc::Receiver<WallpaperData>) -> Result<(), Box<dyn Error>> 
 
     loop {
         event_queue.blocking_dispatch(&mut surface)?;
-        if let Ok(wallpaper_data) = rx.recv() {
-            let _ = event_queue.roundtrip(&mut surface);
-            let _ = surface.draw(wallpaper_data.image, wallpaper_data.output_num);
+
+        if surface.outputs.iter().all(|output| output.configured) && !surface.outputs.is_empty() {
+            if let Ok(wallpaper_data) = rx.recv() {
+                let _ = surface.draw(wallpaper_data.image, wallpaper_data.output_num);
+            }
         }
+
+        surface
+            .outputs
+            .iter_mut()
+            .for_each(|output| output.configured = true);
     }
 }
 

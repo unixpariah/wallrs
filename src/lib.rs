@@ -19,7 +19,7 @@ struct WallpaperData {
 }
 
 static START: Once = Once::new();
-static mut SENDER: Mutex<Option<mpsc::Sender<WallpaperData>>> = Mutex::new(None);
+static SENDER: Mutex<Option<mpsc::Sender<WallpaperData>>> = Mutex::new(None);
 
 /// Set the wallpaper from a file path
 ///
@@ -72,11 +72,9 @@ where
 {
     START.call_once(|| {
         let (tx, rx) = mpsc::channel();
-        unsafe {
-            if let Ok(mut sender) = SENDER.lock() {
-                *sender = Some(tx);
-            };
-        }
+        if let Ok(mut sender) = SENDER.lock() {
+            *sender = Some(tx);
+        };
         thread::spawn(move || -> Result<(), Box<dyn Error + Send + Sync>> {
             match env::var("XDG_SESSION_TYPE")
                 .unwrap_or_default()
@@ -97,14 +95,12 @@ where
         image: image.into(),
         output_num,
     };
-    unsafe {
-        let sender = SENDER.lock().map_err(|_| "Failed to acquire lock")?;
-        sender
-            .as_ref()
-            .expect("It will always be Some at this point")
-            // If this throws it means that rx was dropped due to error in the background thread
-            .send(wallpaper_data)?;
-    }
+    let sender = SENDER.lock().map_err(|_| "Failed to acquire lock")?;
+    sender
+        .as_ref()
+        .expect("It will always be Some at this point")
+        // If this throws it means that rx was dropped due to error in the background thread
+        .send(wallpaper_data)?;
 
     Ok(())
 }

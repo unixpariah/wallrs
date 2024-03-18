@@ -40,16 +40,16 @@ pub fn resize_image(image: &RgbImage, width: u32, height: u32) -> Result<Vec<u8>
     let trg_w = trg_w.min(width);
     let trg_h = trg_h.min(height);
 
-    // If img_w, img_h, trg_w or trg_h is 0 you have bigger problems than unsafety
+    // If img_w, img_h, trg_w or trg_h is 0 you have bigger problems than unwrap
     let src = fast_image_resize::Image::from_vec_u8(
-        unsafe { NonZeroU32::new_unchecked(img_w) },
-        unsafe { NonZeroU32::new_unchecked(img_h) },
+        NonZeroU32::new(img_w).unwrap(),
+        NonZeroU32::new(img_h).unwrap(),
         image,
         PixelType::U8x3,
     )?;
 
-    let new_w = unsafe { NonZeroU32::new_unchecked(trg_w) };
-    let new_h = unsafe { NonZeroU32::new_unchecked(trg_h) };
+    let new_w = NonZeroU32::new(trg_w).unwrap();
+    let new_h = NonZeroU32::new(trg_h).unwrap();
 
     let mut dst = fast_image_resize::Image::new(new_w, new_h, PixelType::U8x3);
     let mut dst_view = dst.view_mut();
