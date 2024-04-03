@@ -219,37 +219,35 @@ pub fn wayland(
         }
     };
     let qh = event_queue.handle();
-
     let mut surface = Surface::new(&globals, &qh);
-
-    _ = event_queue.blocking_dispatch(&mut surface);
+    if event_queue.blocking_dispatch(&mut surface).is_err() {
+        _ = tx.send(false);
+        return Err("Failed to dispatch event".into());
+    };
 
     loop {
         if surface.outputs.iter().all(|output| output.configured) && !surface.outputs.is_empty() {
-            match surface.draw(wallpaper_data.image, wallpaper_data.output_num) {
-                Ok(_) => (),
-                Err(e) => {
-                    _ = tx.send(false);
-
-                    return Err(e);
-                }
+            if surface
+                .draw(wallpaper_data.image, wallpaper_data.output_num)
+                .is_err()
+            {
+                _ = tx.send(false);
+                return Err("".into());
             };
+
+            _ = tx.send(true);
+            wallpaper_data = rx.recv()?;
         }
-        _ = tx.send(true);
-        wallpaper_data = rx.recv()?;
+
+        if event_queue.blocking_dispatch(&mut surface).is_err() {
+            _ = tx.send(false);
+            return Err("Failed to dispatch event".into());
+        }
 
         surface
             .outputs
             .iter_mut()
             .for_each(|output| output.configured = true);
-
-        match event_queue.blocking_dispatch(&mut surface) {
-            Ok(_) => _ = tx.send(true),
-            Err(_) => {
-                _ = tx.send(false);
-                return Err("Failed to dispatch event".into());
-            }
-        }
     }
 }
 
