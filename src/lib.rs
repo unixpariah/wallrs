@@ -1,4 +1,4 @@
-pub mod helpers;
+mod helpers;
 mod wayland;
 mod x11;
 
@@ -18,8 +18,9 @@ struct WallpaperData {
     output_num: Vec<u8>,
 }
 
-static START: Once = Once::new();
+static START: Mutex<Once> = Mutex::new(Once::new());
 static SENDER: Mutex<Option<mpsc::Sender<WallpaperData>>> = Mutex::new(None);
+static FUTURE: Mutex<Option<mpsc::Receiver<bool>>> = Mutex::new(None);
 
 /// Set the wallpaper from a file path
 ///
@@ -70,24 +71,27 @@ pub fn set_from_memory<T>(image: T, output_num: Vec<u8>) -> Result<(), Box<dyn E
 where
     T: Into<RgbImage>,
 {
-    START.call_once(|| {
+    START.lock().unwrap().call_once(|| {
         let (tx, rx) = mpsc::channel();
         if let Ok(mut sender) = SENDER.lock() {
             *sender = Some(tx);
         };
-        thread::spawn(move || -> Result<(), Box<dyn Error + Send + Sync>> {
-            match env::var("XDG_SESSION_TYPE")
+
+        let (tx, res) = mpsc::channel();
+        if let Ok(mut future) = FUTURE.lock() {
+            *future = Some(res);
+        };
+
+        thread::spawn(move || {
+            _ = match env::var("XDG_SESSION_TYPE")
                 .unwrap_or_default()
                 .to_lowercase()
                 .as_str()
             {
-                "wayland" => wayland(rx).map_err(|_| "Wayland failed")?,
-                "x11" | "tty" => x11(rx).map_err(|_| "X11 failed")?,
-                session_type => {
-                    return Err(format!("Unsupported session type {}", session_type).into())
-                }
-            }
-            Ok(())
+                "wayland" => wayland(rx, tx),
+                "x11" | "tty" => x11(rx),
+                session_type => Err(format!("Unsupported session type: {}", session_type).into()),
+            };
         });
     });
 
@@ -96,11 +100,22 @@ where
         output_num,
     };
     let sender = SENDER.lock().map_err(|_| "Failed to acquire lock")?;
-    sender
-        .as_ref()
-        .expect("It will always be Some at this point")
-        // If this throws it means that rx was dropped due to error in the background thread
-        .send(wallpaper_data)?;
+    sender.as_ref().unwrap().send(wallpaper_data)?;
+
+    let future = FUTURE.lock().map_err(|_| "Failed to acquire lock")?;
+    match future.as_ref().unwrap().recv() {
+        Ok(true) => (),
+        Ok(false) => {
+            let mut start = START.lock().unwrap();
+            *start = Once::new();
+            return Err("Failed to set wallpaper".into());
+        }
+        Err(_) => {
+            let mut start = START.lock().unwrap();
+            *start = Once::new();
+            return Err("Failed to set wallpaper".into());
+        }
+    };
 
     Ok(())
 }

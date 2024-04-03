@@ -58,44 +58,36 @@ impl Surface {
         }
     }
 
-    fn draw(&mut self, image: RgbImage, output_num: Vec<u8>) -> Result<(), Box<dyn Error + Send>> {
+    fn draw(&mut self, image: RgbImage, output_num: Vec<u8>) -> Result<(), Box<dyn Error>> {
         self.outputs
             .iter()
             .enumerate()
             .try_for_each(|(index, output)| {
                 if !output_num.contains(&(index as u8)) && !output_num.is_empty() {
-                    return Ok::<(), Box<dyn Error + Send>>(());
+                    return Ok::<(), Box<dyn Error>>(());
                 }
 
-                if let Some(info) = self.output_state.info(&output.output) {
-                    if let Some((width, height)) = info.logical_size {
-                        let mut pool = SlotPool::new((width * height * 4) as usize, &self.shm)
-                            .map_err(|e| -> Box<dyn std::error::Error + Send> { Box::new(e) })?;
-                        if let Ok((buffer, canvas)) =
-                            pool.create_buffer(width, height, width * 4, wl_shm::Format::Xrgb8888)
-                        {
-                            if self.cache.get(&width).is_none() {
-                                if let Ok(resized_image) =
-                                    resize_image(&image, width as u32, height as u32)
-                                {
-                                    self.cache.insert(width, resized_image);
-                                }
-                            }
-
-                            if let Some(img) = self.cache.get(&width) {
-                                canvas.copy_from_slice(img);
-                            }
-
-                            let layer = &output.layer_surface;
-                            layer.set_size(width as u32, height as u32);
-                            layer.wl_surface().damage_buffer(0, 0, width, height);
-                            layer.wl_surface().attach(Some(buffer.wl_buffer()), 0, 0);
-                            layer.commit();
-                        };
-                    }
+                let info = self.output_state.info(&output.output).ok_or("")?;
+                let (width, height) = info.logical_size.ok_or("")?;
+                let mut pool = SlotPool::new((width * height * 4) as usize, &self.shm)?;
+                let (buffer, canvas) =
+                    pool.create_buffer(width, height, width * 4, wl_shm::Format::Xrgb8888)?;
+                if self.cache.get(&width).is_none() {
+                    let resized_image = resize_image(&image, width as u32, height as u32)?;
+                    self.cache.insert(width, resized_image);
                 }
 
-                Ok::<(), Box<dyn Error + Send>>(())
+                // This unwrap is safe because we just inserted the value
+                let img = self.cache.get(&width).unwrap();
+                canvas.copy_from_slice(img);
+
+                let layer = &output.layer_surface;
+                layer.set_size(width as u32, height as u32);
+                layer.wl_surface().damage_buffer(0, 0, width, height);
+                layer.wl_surface().attach(Some(buffer.wl_buffer()), 0, 0);
+                layer.commit();
+
+                Ok::<(), Box<dyn Error>>(())
             })
     }
 }
@@ -144,7 +136,7 @@ impl OutputHandler for Surface {
         let layer = self.layer_shell.create_layer_surface(
             qh,
             surface,
-            Layer::Bottom,
+            Layer::Background,
             Some("ssb"),
             Some(&output),
         );
@@ -206,27 +198,58 @@ impl ShmHandler for Surface {
     }
 }
 
-pub fn wayland(rx: mpsc::Receiver<WallpaperData>) -> Result<(), Box<dyn Error>> {
-    let conn = Connection::connect_to_env()?;
+pub fn wayland(
+    rx: mpsc::Receiver<WallpaperData>,
+    tx: mpsc::Sender<bool>,
+) -> Result<(), Box<dyn Error>> {
+    let mut wallpaper_data = rx.recv()?;
+    let conn = match Connection::connect_to_env() {
+        Ok(conn) => conn,
+        Err(_) => {
+            _ = tx.send(false);
+            return Err("Failed to connect to wayland server".into());
+        }
+    };
 
-    let (globals, mut event_queue) = registry_queue_init(&conn)?;
+    let (globals, mut event_queue) = match registry_queue_init(&conn) {
+        Ok(reg) => reg,
+        Err(_) => {
+            _ = tx.send(false);
+            return Err("Failed to initialize registry".into());
+        }
+    };
     let qh = event_queue.handle();
 
     let mut surface = Surface::new(&globals, &qh);
 
-    loop {
-        event_queue.blocking_dispatch(&mut surface)?;
+    _ = event_queue.blocking_dispatch(&mut surface);
 
+    loop {
         if surface.outputs.iter().all(|output| output.configured) && !surface.outputs.is_empty() {
-            if let Ok(wallpaper_data) = rx.recv() {
-                let _ = surface.draw(wallpaper_data.image, wallpaper_data.output_num);
-            }
+            match surface.draw(wallpaper_data.image, wallpaper_data.output_num) {
+                Ok(_) => (),
+                Err(e) => {
+                    _ = tx.send(false);
+
+                    return Err(e);
+                }
+            };
         }
+        _ = tx.send(true);
+        wallpaper_data = rx.recv()?;
 
         surface
             .outputs
             .iter_mut()
             .for_each(|output| output.configured = true);
+
+        match event_queue.blocking_dispatch(&mut surface) {
+            Ok(_) => _ = tx.send(true),
+            Err(_) => {
+                _ = tx.send(false);
+                return Err("Failed to dispatch event".into());
+            }
+        }
     }
 }
 

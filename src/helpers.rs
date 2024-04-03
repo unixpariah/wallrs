@@ -2,28 +2,20 @@ use fast_image_resize::{FilterType, PixelType, Resizer};
 use image::RgbImage;
 use std::{error::Error, num::NonZeroU32};
 
-/// Made it public just to be able to benchmark it but go ahead
-/// Resize an image to the given width and height
-///
-/// Example:
-/// ```rust
-/// use image::RgbImage;
-/// use wlrs::helpers::resize_image;
-///
-/// let image = RgbImage::new(1920, 1080);
-/// let resized = resize_image(&image, 1000, 1000).unwrap();
-/// ```
-/// Note, this function is totally ripped off from swww
-pub fn resize_image(image: &RgbImage, width: u32, height: u32) -> Result<Vec<u8>, Box<dyn Error>> {
+pub(crate) fn resize_image(
+    image: &RgbImage,
+    width: u32,
+    height: u32,
+) -> Result<Vec<u8>, Box<dyn Error>> {
     let (img_w, img_h) = image.dimensions();
     let image = image.as_raw().to_vec();
 
     if img_w == width && img_h == height {
-        return Ok(pad(
-            image::RgbImage::from_raw(width, height, image).unwrap(),
+        return pad(
+            image::RgbImage::from_raw(width, height, image).ok_or("")?,
             width,
             height,
-        )?);
+        );
     }
 
     let ratio = width as f32 / height as f32;
@@ -40,16 +32,15 @@ pub fn resize_image(image: &RgbImage, width: u32, height: u32) -> Result<Vec<u8>
     let trg_w = trg_w.min(width);
     let trg_h = trg_h.min(height);
 
-    // If img_w, img_h, trg_w or trg_h is 0 you have bigger problems than unwrap
     let src = fast_image_resize::Image::from_vec_u8(
-        NonZeroU32::new(img_w).unwrap(),
-        NonZeroU32::new(img_h).unwrap(),
+        NonZeroU32::new(img_w).ok_or("")?,
+        NonZeroU32::new(img_h).ok_or("")?,
         image,
         PixelType::U8x3,
     )?;
 
-    let new_w = NonZeroU32::new(trg_w).unwrap();
-    let new_h = NonZeroU32::new(trg_h).unwrap();
+    let new_w = NonZeroU32::new(trg_w).ok_or("")?;
+    let new_h = NonZeroU32::new(trg_h).ok_or("")?;
 
     let mut dst = fast_image_resize::Image::new(new_w, new_h, PixelType::U8x3);
     let mut dst_view = dst.view_mut();
@@ -62,14 +53,14 @@ pub fn resize_image(image: &RgbImage, width: u32, height: u32) -> Result<Vec<u8>
 
     let dst = dst.into_vec();
 
-    Ok(pad(
-        image::RgbImage::from_raw(trg_w, trg_h, dst).unwrap(),
+    pad(
+        image::RgbImage::from_raw(trg_w, trg_h, dst).ok_or("")?,
         width,
         height,
-    )?)
+    )
 }
 
-fn pad(mut img: RgbImage, trg_w: u32, trg_h: u32) -> Result<Vec<u8>, String> {
+fn pad(mut img: RgbImage, trg_w: u32, trg_h: u32) -> Result<Vec<u8>, Box<dyn Error>> {
     let color = [0, 0, 0];
 
     if img.dimensions() == (trg_w, trg_h) {

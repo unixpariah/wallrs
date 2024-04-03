@@ -78,7 +78,8 @@ pub fn x11(rx: mpsc::Receiver<WallpaperData>) -> Result<(), Box<dyn Error>> {
                 || wallpaper_data.output_num.is_empty()
             {
                 let image =
-                    resize_image(&wallpaper_data.image, scr.width as u32, scr.height as u32)?;
+                    resize_image(&wallpaper_data.image, scr.width as u32, scr.height as u32)
+                        .map_err(|e| e.to_string())?;
                 let _ = conn.put_image(
                     ImageFormat::Z_PIXMAP,
                     pixmap,

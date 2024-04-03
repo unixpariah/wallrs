@@ -5,7 +5,7 @@ const TEST_IMG_DIR: &str = "tests/test_images";
 const TEST_IMGS: [&str; 3] = [
     "tests/test_images/test1.jpg",
     "tests/test_images/test2.png",
-    "tests/test_images/test2.bmp",
+    "tests/test_images/test3.bmp",
 ];
 
 fn make_img_dir() {
@@ -36,22 +36,34 @@ fn make_test_imgs() {
     })
 }
 
-fn set_images() {
-    TEST_IMGS.iter().for_each(|test_img| {
-        let img = image::open(test_img).unwrap();
-        assert!(set_from_memory(img, vec![]).is_ok());
-        assert!(set_from_path(test_img, vec![]).is_ok());
-    });
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-fn set_image_that_does_not_exist() {
-    assert!(set_from_path("", vec![]).is_err());
-}
+    #[test]
+    fn make_test_imgs_test() {
+        make_test_imgs();
+    }
 
-#[test]
-fn integration_tests() {
-    make_test_imgs();
+    #[test]
+    fn set_empty_image() {
+        let img = image::RgbImage::new(0, 0);
+        assert!(set_from_memory(img, vec![]).is_err());
+    }
 
-    set_images();
-    set_image_that_does_not_exist();
+    #[test]
+    fn set_images() {
+        TEST_IMGS.iter().for_each(|test_img| {
+            let img = image::open(test_img).unwrap();
+            set_from_memory(img.clone(), vec![]).unwrap();
+            set_from_path(test_img, vec![]).unwrap();
+            assert!(set_from_memory(img, vec![]).is_ok());
+            assert!(set_from_path(test_img, vec![]).is_ok());
+        });
+    }
+
+    #[test]
+    fn set_image_that_does_not_exist() {
+        assert!(set_from_path("", vec![]).is_err());
+    }
 }

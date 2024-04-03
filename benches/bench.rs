@@ -1,27 +1,45 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use image::{ImageBuffer, RgbImage};
-use wlrs::helpers::resize_image;
+use criterion::{criterion_group, criterion_main, Criterion};
+use wlrs::{set_from_memory, set_from_path};
 
 fn bench_resize(c: &mut Criterion) {
-    let image: RgbImage = black_box(ImageBuffer::new(3840, 2160));
-    c.bench_function("enlarge_smol", |b| {
-        b.iter(|| resize_image(&image, 3940, 2260))
+    let image1 = image::open("tests/test_images/test1.jpg").unwrap();
+    let image2 = image::open("tests/test_images/test2.png").unwrap();
+    let image3 = image::open("tests/test_images/test3.bmp").unwrap();
+
+    c.bench_function("set_jpg_from_path", |b| {
+        b.iter(|| {
+            set_from_path("tests/test_images/test1.jpg", vec![]).unwrap();
+        })
     });
 
-    c.bench_function("shrink_smol", |b| {
-        b.iter(|| resize_image(&image, 3740, 2060))
+    c.bench_function("set_png_from_path", |b| {
+        b.iter(|| {
+            set_from_path("tests/test_images/test2.png", vec![]).unwrap();
+        })
     });
 
-    c.bench_function("enlarge_big", |b| {
-        b.iter(|| resize_image(&image, 4840, 3160))
+    c.bench_function("set_bmp_from_path", |b| {
+        b.iter(|| {
+            set_from_path("tests/test_images/test3.bmp", vec![]).unwrap();
+        })
     });
 
-    c.bench_function("shrink_big", |b| {
-        b.iter(|| resize_image(&image, 1940, 1060))
+    c.bench_function("set_jpg_from_memory", |b| {
+        b.iter(|| {
+            set_from_memory(image1.clone(), vec![]).unwrap();
+        })
     });
 
-    c.bench_function("resize_to_current_size", |b| {
-        b.iter(|| resize_image(&image, 3840, 2160))
+    c.bench_function("set_png_from_memory", |b| {
+        b.iter(|| {
+            set_from_memory(image2.clone(), vec![]).unwrap();
+        })
+    });
+
+    c.bench_function("set_bmp_from_memory", |b| {
+        b.iter(|| {
+            set_from_memory(image3.clone(), vec![]).unwrap();
+        })
     });
 }
 

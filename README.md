@@ -44,3 +44,8 @@ fn main() {
   set_from_path("wallpaper.jpg", Vec::new())unwrap();
 }
 ```
+
+## TODO
+- Better errors
+- Add different crop modes
+- Fix crashing when new output added
