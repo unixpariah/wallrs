@@ -8,7 +8,7 @@ pub use image::RgbImage;
 use std::{
     env,
     path::Path,
-    sync::{mpsc, Mutex, Once},
+    sync::{mpsc, Mutex},
     thread,
 };
 use wayland::wayland;
@@ -19,9 +19,26 @@ pub struct WallpaperData {
     output_num: Vec<u8>,
 }
 
-static START: Mutex<Once> = Mutex::new(Once::new());
-static SENDER: Mutex<Option<mpsc::Sender<WallpaperData>>> = Mutex::new(None);
-static RESPONSE: Mutex<Option<mpsc::Receiver<bool>>> = Mutex::new(None);
+struct Channel {
+    sender: mpsc::Sender<WallpaperData>,
+    receiver: mpsc::Receiver<bool>,
+}
+
+impl Channel {
+    fn new(sender: mpsc::Sender<WallpaperData>, receiver: mpsc::Receiver<bool>) -> Self {
+        Self { sender, receiver }
+    }
+
+    fn send(&self, data: WallpaperData) -> Result<(), mpsc::SendError<WallpaperData>> {
+        self.sender.send(data)
+    }
+
+    fn recv(&self) -> Result<bool, mpsc::RecvError> {
+        self.receiver.recv()
+    }
+}
+
+static CHANNEL: Mutex<Option<Channel>> = Mutex::new(None);
 
 /// Set the wallpaper from a file path
 ///
@@ -72,67 +89,43 @@ pub fn set_from_memory<T>(image: T, output_num: Vec<u8>) -> Result<(), WlrsError
 where
     T: Into<RgbImage>,
 {
-    START
+    let mut channel = CHANNEL
         .lock()
-        .map_err(|_| WlrsError::LockError("Failed to lock START"))?
-        .call_once(|| {
-            let (tx, rx) = mpsc::channel();
-            if let Ok(mut sender) = SENDER.lock() {
-                *sender = Some(tx);
+        .map_err(|_| WlrsError::LockError("Failed to lock sender"))?;
+
+    if channel.is_none() {
+        let (tx, rx) = mpsc::channel();
+        let (res_tx, res_rx) = mpsc::channel();
+        *channel = Some(Channel::new(tx, res_rx));
+
+        thread::spawn(move || {
+            let _err = match env::var("XDG_SESSION_TYPE")
+                .unwrap_or_default()
+                .to_lowercase()
+                .as_str()
+            {
+                "wayland" => wayland(rx, res_tx.clone()),
+                "x11" | "tty" => x11(rx, res_tx.clone()),
+                session_type => Err(format!("Unsupported session type: {}", session_type).into()),
             };
-
-            let (tx, res) = mpsc::channel();
-            if let Ok(mut response) = RESPONSE.lock() {
-                *response = Some(res);
-            };
-
-            thread::spawn(move || {
-                let a = match env::var("XDG_SESSION_TYPE")
-                    .unwrap_or_default()
-                    .to_lowercase()
-                    .as_str()
-                {
-                    "wayland" => wayland(rx, tx.clone()),
-                    "x11" | "tty" => x11(rx),
-                    session_type => {
-                        Err(format!("Unsupported session type: {}", session_type).into())
-                    }
-                };
-
-                if a.is_err() {
-                    tx.send(false).unwrap();
-                }
-            });
+            _ = res_tx.send(false);
         });
+    }
 
     let wallpaper_data = WallpaperData {
         image: image.into(),
         output_num,
     };
-    let sender = SENDER
-        .lock()
-        .map_err(|_| WlrsError::LockError("Failed to lock sender"))?;
-    // This will always be Some at this point
-    sender.as_ref().unwrap().send(wallpaper_data)?;
 
-    let response = RESPONSE
-        .lock()
-        .map_err(|_| WlrsError::LockError("Failed to lock respose"))?;
-    // This will always be Some at this point
-    match response.as_ref().unwrap().recv() {
+    channel.as_ref().unwrap().send(wallpaper_data)?;
+    match channel.as_ref().unwrap().recv() {
         Ok(true) => Ok(()),
         Ok(false) => {
-            let mut start = START
-                .lock()
-                .map_err(|_| WlrsError::LockError("Failed to lock START"))?;
-            *start = Once::new();
+            *channel = None;
             Err(WlrsError::CustomError("Failed to set wallpaper"))
         }
         Err(_) => {
-            let mut start = START
-                .lock()
-                .map_err(|_| WlrsError::LockError("Failed to lock START"))?;
-            *start = Once::new();
+            *channel = None;
             Err(WlrsError::CustomError("Failed to set wallpaper"))
         }
     }

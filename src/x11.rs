@@ -22,7 +22,10 @@ struct Screen {
     y: i16,
 }
 
-pub fn x11(rx: mpsc::Receiver<WallpaperData>) -> Result<(), Box<dyn Error>> {
+pub fn x11(
+    rx: mpsc::Receiver<WallpaperData>,
+    tx: mpsc::Sender<bool>,
+) -> Result<(), Box<dyn Error>> {
     let (conn, screen_num) = connect(None)?;
     let screen = conn.setup().roots[screen_num].to_owned();
     let res = conn
@@ -120,5 +123,6 @@ pub fn x11(rx: mpsc::Receiver<WallpaperData>) -> Result<(), Box<dyn Error>> {
             &ChangeWindowAttributesAux::new().background_pixmap(pixmap),
         )?;
         conn.clear_area(false, screen.root, 0, 0, width, height)?;
+        tx.send(true)?;
     }
 }
