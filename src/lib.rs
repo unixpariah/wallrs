@@ -106,7 +106,7 @@ where
                 .as_str()
             {
                 "wayland" => wayland(rx, res_tx.clone()),
-                //"x11" | "tty" => x11(rx, res_tx.clone()),
+                "x11" | "tty" => x11(rx, res_tx.clone()),
                 session_type => Err(WlrsError::UnsupportedError(session_type.to_string())),
             };
             _ = res_tx.send(error);

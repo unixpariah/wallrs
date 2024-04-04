@@ -1,5 +1,5 @@
-use crate::{helpers::resize_image, WallpaperData};
-use std::{error::Error, sync::mpsc};
+use crate::{error::WlrsError, helpers::resize_image, WallpaperData};
+use std::sync::mpsc;
 use x11rb::{
     connect,
     connection::Connection,
@@ -24,8 +24,8 @@ struct Screen {
 
 pub fn x11(
     rx: mpsc::Receiver<WallpaperData>,
-    tx: mpsc::Sender<bool>,
-) -> Result<(), Box<dyn Error>> {
+    tx: mpsc::Sender<Result<(), WlrsError>>,
+) -> Result<(), WlrsError> {
     let (conn, screen_num) = connect(None)?;
     let screen = conn.setup().roots[screen_num].to_owned();
     let res = conn
@@ -82,7 +82,7 @@ pub fn x11(
             {
                 let image =
                     resize_image(&wallpaper_data.image, scr.width as u32, scr.height as u32)
-                        .map_err(|e| e.to_string())?;
+                        .map_err(|_| WlrsError::CustomError("Failed to resize image"))?;
                 let _ = conn.put_image(
                     ImageFormat::Z_PIXMAP,
                     pixmap,
@@ -97,7 +97,7 @@ pub fn x11(
                 );
             }
 
-            Ok::<(), Box<dyn Error>>(())
+            Ok::<(), WlrsError>(())
         })?;
         conn.kill_client(Kill::ALL_TEMPORARY)?;
         conn.set_close_down_mode(CloseDown::RETAIN_TEMPORARY)?;
@@ -123,6 +123,6 @@ pub fn x11(
             &ChangeWindowAttributesAux::new().background_pixmap(pixmap),
         )?;
         conn.clear_area(false, screen.root, 0, 0, width, height)?;
-        tx.send(true)?;
+        _ = tx.send(Ok(()));
     }
 }

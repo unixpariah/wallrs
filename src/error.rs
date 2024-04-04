@@ -1,4 +1,5 @@
 use std::sync::{mpsc, MutexGuard, PoisonError};
+use x11rb::errors::{ConnectError, ConnectionError, ReplyError, ReplyOrIdError};
 
 use crate::{Channel, WallpaperData};
 
@@ -11,11 +12,36 @@ pub enum WlrsError {
     ReceiverError(mpsc::RecvError),
     UnsupportedError(String),
     WaylandError(&'static str),
+    XorgError(&'static str),
 }
 
 impl std::fmt::Debug for WlrsError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "WlrsError")
+    }
+}
+
+impl From<ConnectionError> for WlrsError {
+    fn from(_err: ConnectionError) -> WlrsError {
+        WlrsError::XorgError("Failed to connect to xorg server")
+    }
+}
+
+impl From<ReplyError> for WlrsError {
+    fn from(_err: ReplyError) -> WlrsError {
+        WlrsError::XorgError("Failed to get reply from xorg server")
+    }
+}
+
+impl From<ReplyOrIdError> for WlrsError {
+    fn from(_err: ReplyOrIdError) -> WlrsError {
+        WlrsError::XorgError("Failed to get reply or id from xorg server")
+    }
+}
+
+impl From<ConnectError> for WlrsError {
+    fn from(_err: ConnectError) -> WlrsError {
+        WlrsError::XorgError("Failed to connect to xorg server")
     }
 }
 
@@ -71,6 +97,7 @@ impl std::fmt::Display for WlrsError {
             WlrsError::ReceiverError(err) => write!(f, "ReceiverError: {}", err),
             WlrsError::UnsupportedError(err) => write!(f, "UnsupportedError: {}", err),
             WlrsError::WaylandError(err) => write!(f, "WaylandError: {}", err),
+            WlrsError::XorgError(err) => write!(f, "XorgError: {}", err),
         }
     }
 }
