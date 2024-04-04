@@ -8,6 +8,9 @@ pub enum WlrsError {
     LockError(&'static str),
     CustomError(&'static str),
     SendError(mpsc::SendError<WallpaperData>),
+    ReceiverError(mpsc::RecvError),
+    WaylandError(&'static str),
+    UnsupportedError(String),
 }
 
 impl std::fmt::Debug for WlrsError {
@@ -28,6 +31,12 @@ impl From<mpsc::SendError<WallpaperData>> for WlrsError {
     }
 }
 
+impl From<mpsc::RecvError> for WlrsError {
+    fn from(err: mpsc::RecvError) -> WlrsError {
+        WlrsError::ReceiverError(err)
+    }
+}
+
 impl std::fmt::Display for WlrsError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
@@ -35,6 +44,9 @@ impl std::fmt::Display for WlrsError {
             WlrsError::LockError(err) => write!(f, "LockError: {}", err),
             WlrsError::CustomError(err) => write!(f, "CustomError: {}", err),
             WlrsError::SendError(err) => write!(f, "SendError: {}", err),
+            WlrsError::WaylandError(err) => write!(f, "WaylandError: {}", err),
+            WlrsError::ReceiverError(err) => write!(f, "ReceiverError: {}", err),
+            WlrsError::UnsupportedError(err) => write!(f, "UnsupportedError: {}", err),
         }
     }
 }

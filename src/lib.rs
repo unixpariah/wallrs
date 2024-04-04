@@ -52,7 +52,7 @@ where
 ///
 /// # Example
 ///
-/// ```rust
+/// ```
 /// use image::RgbImage;
 /// use wlrs::set_from_memory;
 ///
@@ -87,17 +87,21 @@ where
             };
 
             thread::spawn(move || {
-                _ = match env::var("XDG_SESSION_TYPE")
+                let a = match env::var("XDG_SESSION_TYPE")
                     .unwrap_or_default()
                     .to_lowercase()
                     .as_str()
                 {
-                    "wayland" => wayland(rx, tx),
-                    "x11" | "tty" => x11(rx, tx),
+                    "wayland" => wayland(rx, tx.clone()),
+                    "x11" | "tty" => x11(rx),
                     session_type => {
                         Err(format!("Unsupported session type: {}", session_type).into())
                     }
                 };
+
+                if a.is_err() {
+                    tx.send(false).unwrap();
+                }
             });
         });
 
@@ -116,22 +120,20 @@ where
         .map_err(|_| WlrsError::LockError("Failed to lock respose"))?;
     // This will always be Some at this point
     match response.as_ref().unwrap().recv() {
-        Ok(true) => (),
+        Ok(true) => Ok(()),
         Ok(false) => {
             let mut start = START
                 .lock()
                 .map_err(|_| WlrsError::LockError("Failed to lock START"))?;
             *start = Once::new();
-            return Err(WlrsError::CustomError("Failed to set wallpaper"));
+            Err(WlrsError::CustomError("Failed to set wallpaper"))
         }
         Err(_) => {
             let mut start = START
                 .lock()
                 .map_err(|_| WlrsError::LockError("Failed to lock START"))?;
             *start = Once::new();
-            return Err(WlrsError::CustomError("Failed to set wallpaper"));
+            Err(WlrsError::CustomError("Failed to set wallpaper"))
         }
-    };
-
-    Ok(())
+    }
 }

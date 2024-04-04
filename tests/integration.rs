@@ -49,7 +49,7 @@ mod tests {
     fn set_images() {
         TEST_IMGS.iter().for_each(|test_img| {
             let img = image::open(test_img).unwrap();
-            assert!(set_from_memory(img, vec![]).is_ok());
+            assert!(set_from_memory(img.clone(), vec![]).is_ok());
             assert!(set_from_path(test_img, vec![]).is_ok());
         });
     }

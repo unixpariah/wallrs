@@ -22,17 +22,8 @@ struct Screen {
     y: i16,
 }
 
-pub fn x11(
-    rx: mpsc::Receiver<WallpaperData>,
-    tx: mpsc::Sender<bool>,
-) -> Result<(), Box<dyn Error>> {
-    let (conn, screen_num) = match connect(None) {
-        Ok((conn, screen_num)) => (conn, screen_num),
-        Err(_) => {
-            _ = tx.send(false);
-            return Err("Failed to connect to x11 server".into());
-        }
-    };
+pub fn x11(rx: mpsc::Receiver<WallpaperData>) -> Result<(), Box<dyn Error>> {
+    let (conn, screen_num) = connect(None)?;
     let screen = conn.setup().roots[screen_num].to_owned();
     let res = conn
         .randr_get_screen_resources_current(screen.root)?

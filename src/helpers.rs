@@ -64,7 +64,7 @@ fn pad(mut img: RgbImage, trg_w: u32, trg_h: u32) -> Result<Vec<u8>, Box<dyn Err
     let color = [0, 0, 0];
 
     if img.dimensions() == (trg_w, trg_h) {
-        return Ok(add_channel(img.into_vec()));
+        return Ok(img.into_vec());
     }
 
     let (trg_w, trg_h) = (trg_w as usize, trg_h as usize);
@@ -112,15 +112,5 @@ fn pad(mut img: RgbImage, trg_w: u32, trg_h: u32) -> Result<Vec<u8>, Box<dyn Err
         padded.push(color[0]);
     }
 
-    Ok(add_channel(padded))
-}
-
-fn add_channel(dst: Vec<u8>) -> Vec<u8> {
-    let mut rgba_dst = Vec::with_capacity(dst.len() / 3 * 4);
-    dst.chunks(3).for_each(|rgb_pixels| {
-        let pixel = [rgb_pixels[2], rgb_pixels[1], rgb_pixels[0], 255];
-        rgba_dst.extend_from_slice(&pixel);
-    });
-
-    rgba_dst
+    Ok(padded)
 }

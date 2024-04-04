@@ -69,9 +69,9 @@ impl Surface {
 
                 let info = self.output_state.info(&output.output).ok_or("")?;
                 let (width, height) = info.logical_size.ok_or("")?;
-                let mut pool = SlotPool::new((width * height * 4) as usize, &self.shm)?;
+                let mut pool = SlotPool::new((width * height * 3) as usize, &self.shm)?;
                 let (buffer, canvas) =
-                    pool.create_buffer(width, height, width * 4, wl_shm::Format::Xrgb8888)?;
+                    pool.create_buffer(width, height, width * 3, wl_shm::Format::Bgr888)?;
                 if self.cache.get(&width).is_none() {
                     let resized_image = resize_image(&image, width as u32, height as u32)?;
                     self.cache.insert(width, resized_image);
@@ -86,6 +86,8 @@ impl Surface {
                 layer.wl_surface().damage_buffer(0, 0, width, height);
                 layer.wl_surface().attach(Some(buffer.wl_buffer()), 0, 0);
                 layer.commit();
+
+                self.cache = HashMap::new();
 
                 Ok::<(), Box<dyn Error>>(())
             })
@@ -202,11 +204,9 @@ pub fn wayland(
     rx: mpsc::Receiver<WallpaperData>,
     tx: mpsc::Sender<bool>,
 ) -> Result<(), Box<dyn Error>> {
-    let mut wallpaper_data = rx.recv()?;
     let conn = match Connection::connect_to_env() {
         Ok(conn) => conn,
         Err(_) => {
-            _ = tx.send(false);
             return Err("Failed to connect to wayland server".into());
         }
     };
@@ -214,36 +214,27 @@ pub fn wayland(
     let (globals, mut event_queue) = match registry_queue_init(&conn) {
         Ok(reg) => reg,
         Err(_) => {
-            _ = tx.send(false);
             return Err("Failed to initialize registry".into());
         }
     };
     let qh = event_queue.handle();
     let mut surface = Surface::new(&globals, &qh);
-    if event_queue.blocking_dispatch(&mut surface).is_err() {
-        _ = tx.send(false);
-        return Err("Failed to dispatch event".into());
-    };
 
     loop {
+        if event_queue.blocking_dispatch(&mut surface).is_err() {
+            return Err("Failed to dispatch event".into());
+        }
+
         if surface.outputs.iter().all(|output| output.configured) && !surface.outputs.is_empty() {
+            let wallpaper_data = rx.recv()?;
             if surface
                 .draw(wallpaper_data.image, wallpaper_data.output_num)
                 .is_err()
             {
-                _ = tx.send(false);
                 return Err("".into());
             };
-
             _ = tx.send(true);
-            wallpaper_data = rx.recv()?;
         }
-
-        if event_queue.blocking_dispatch(&mut surface).is_err() {
-            _ = tx.send(false);
-            return Err("Failed to dispatch event".into());
-        }
-
         surface
             .outputs
             .iter_mut()
