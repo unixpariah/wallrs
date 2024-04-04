@@ -21,11 +21,14 @@ pub struct WallpaperData {
 
 struct Channel {
     sender: mpsc::Sender<WallpaperData>,
-    receiver: mpsc::Receiver<bool>,
+    receiver: mpsc::Receiver<Result<(), WlrsError>>,
 }
 
 impl Channel {
-    fn new(sender: mpsc::Sender<WallpaperData>, receiver: mpsc::Receiver<bool>) -> Self {
+    fn new(
+        sender: mpsc::Sender<WallpaperData>,
+        receiver: mpsc::Receiver<Result<(), WlrsError>>,
+    ) -> Self {
         Self { sender, receiver }
     }
 
@@ -33,8 +36,8 @@ impl Channel {
         self.sender.send(data)
     }
 
-    fn recv(&self) -> Result<bool, mpsc::RecvError> {
-        self.receiver.recv()
+    fn get_reply(&self) -> Result<(), WlrsError> {
+        self.receiver.recv()?
     }
 }
 
@@ -89,9 +92,7 @@ pub fn set_from_memory<T>(image: T, output_num: Vec<u8>) -> Result<(), WlrsError
 where
     T: Into<RgbImage>,
 {
-    let mut channel = CHANNEL
-        .lock()
-        .map_err(|_| WlrsError::LockError("Failed to lock sender"))?;
+    let mut channel = CHANNEL.lock()?;
 
     if channel.is_none() {
         let (tx, rx) = mpsc::channel();
@@ -99,16 +100,16 @@ where
         *channel = Some(Channel::new(tx, res_rx));
 
         thread::spawn(move || {
-            let _err = match env::var("XDG_SESSION_TYPE")
+            let error = match env::var("XDG_SESSION_TYPE")
                 .unwrap_or_default()
                 .to_lowercase()
                 .as_str()
             {
                 "wayland" => wayland(rx, res_tx.clone()),
-                "x11" | "tty" => x11(rx, res_tx.clone()),
-                session_type => Err(format!("Unsupported session type: {}", session_type).into()),
+                //"x11" | "tty" => x11(rx, res_tx.clone()),
+                session_type => Err(WlrsError::UnsupportedError(session_type.to_string())),
             };
-            _ = res_tx.send(false);
+            _ = res_tx.send(error);
         });
     }
 
@@ -117,16 +118,13 @@ where
         output_num,
     };
 
+    // This is always Some at this point
     channel.as_ref().unwrap().send(wallpaper_data)?;
-    match channel.as_ref().unwrap().recv() {
-        Ok(true) => Ok(()),
-        Ok(false) => {
+    match channel.as_ref().unwrap().get_reply() {
+        Ok(()) => Ok(()),
+        Err(e) => {
             *channel = None;
-            Err(WlrsError::CustomError("Failed to set wallpaper"))
-        }
-        Err(_) => {
-            *channel = None;
-            Err(WlrsError::CustomError("Failed to set wallpaper"))
+            Err(e)
         }
     }
 }

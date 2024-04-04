@@ -1,4 +1,4 @@
-use crate::{helpers::resize_image, WallpaperData};
+use crate::{error::WlrsError, helpers::resize_image, WallpaperData};
 use image::RgbImage;
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
@@ -202,38 +202,21 @@ impl ShmHandler for Surface {
 
 pub fn wayland(
     rx: mpsc::Receiver<WallpaperData>,
-    tx: mpsc::Sender<bool>,
-) -> Result<(), Box<dyn Error>> {
-    let conn = match Connection::connect_to_env() {
-        Ok(conn) => conn,
-        Err(_) => {
-            return Err("Failed to connect to wayland server".into());
-        }
-    };
-
-    let (globals, mut event_queue) = match registry_queue_init(&conn) {
-        Ok(reg) => reg,
-        Err(_) => {
-            return Err("Failed to initialize registry".into());
-        }
-    };
+    tx: mpsc::Sender<Result<(), WlrsError>>,
+) -> Result<(), WlrsError> {
+    let conn = Connection::connect_to_env()?;
+    let (globals, mut event_queue) = registry_queue_init(&conn)?;
     let qh = event_queue.handle();
     let mut surface = Surface::new(&globals, &qh);
 
     loop {
-        if event_queue.blocking_dispatch(&mut surface).is_err() {
-            return Err("Failed to dispatch event".into());
-        }
-
+        event_queue.blocking_dispatch(&mut surface)?;
         if surface.outputs.iter().all(|output| output.configured) && !surface.outputs.is_empty() {
             let wallpaper_data = rx.recv()?;
-            if surface
+            surface
                 .draw(wallpaper_data.image, wallpaper_data.output_num)
-                .is_err()
-            {
-                return Err("".into());
-            };
-            _ = tx.send(true);
+                .map_err(|_| WlrsError::CustomError("Failed to draw image"))?;
+            _ = tx.send(Ok(()));
         }
         surface
             .outputs

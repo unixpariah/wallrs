@@ -1,6 +1,6 @@
-use std::sync::mpsc;
+use std::sync::{mpsc, MutexGuard, PoisonError};
 
-use crate::WallpaperData;
+use crate::{Channel, WallpaperData};
 
 #[allow(clippy::enum_variant_names)]
 pub enum WlrsError {
@@ -9,13 +9,37 @@ pub enum WlrsError {
     CustomError(&'static str),
     SendError(mpsc::SendError<WallpaperData>),
     ReceiverError(mpsc::RecvError),
-    WaylandError(&'static str),
     UnsupportedError(String),
+    WaylandError(&'static str),
 }
 
 impl std::fmt::Debug for WlrsError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "WlrsError")
+    }
+}
+
+impl From<wayland_client::ConnectError> for WlrsError {
+    fn from(_err: wayland_client::ConnectError) -> WlrsError {
+        WlrsError::WaylandError("Failed to connect to wayland server")
+    }
+}
+
+impl From<wayland_client::globals::GlobalError> for WlrsError {
+    fn from(_err: wayland_client::globals::GlobalError) -> WlrsError {
+        WlrsError::WaylandError("Failed to get globals")
+    }
+}
+
+impl From<wayland_client::DispatchError> for WlrsError {
+    fn from(_err: wayland_client::DispatchError) -> WlrsError {
+        WlrsError::WaylandError("Failed to dispatch events")
+    }
+}
+
+impl From<PoisonError<MutexGuard<'_, Option<Channel>>>> for WlrsError {
+    fn from(_err: PoisonError<MutexGuard<Option<Channel>>>) -> WlrsError {
+        WlrsError::LockError("Failed to lock channel mutex")
     }
 }
 
@@ -44,9 +68,9 @@ impl std::fmt::Display for WlrsError {
             WlrsError::LockError(err) => write!(f, "LockError: {}", err),
             WlrsError::CustomError(err) => write!(f, "CustomError: {}", err),
             WlrsError::SendError(err) => write!(f, "SendError: {}", err),
-            WlrsError::WaylandError(err) => write!(f, "WaylandError: {}", err),
             WlrsError::ReceiverError(err) => write!(f, "ReceiverError: {}", err),
             WlrsError::UnsupportedError(err) => write!(f, "UnsupportedError: {}", err),
+            WlrsError::WaylandError(err) => write!(f, "WaylandError: {}", err),
         }
     }
 }
