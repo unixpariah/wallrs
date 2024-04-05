@@ -1,43 +1,43 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use wlrs::{set_from_memory, set_from_path};
+use wlrs::{set_from_memory, set_from_path, CropMode};
 
 fn bench_resize(c: &mut Criterion) {
     c.bench_function("set_jpg_from_path", |b| {
         b.iter(|| {
-            set_from_path("tests/test_images/test1.jpg", vec![]).unwrap();
+            set_from_path("tests/test_images/test1.jpg", vec![], CropMode::Fit(None)).unwrap();
         })
     });
 
     c.bench_function("set_png_from_path", |b| {
         b.iter(|| {
-            set_from_path("tests/test_images/test2.png", vec![]).unwrap();
+            set_from_path("tests/test_images/test2.png", vec![], CropMode::Fit(None)).unwrap();
         })
     });
 
     c.bench_function("set_bmp_from_path", |b| {
         b.iter(|| {
-            set_from_path("tests/test_images/test3.bmp", vec![]).unwrap();
+            set_from_path("tests/test_images/test3.bmp", vec![], CropMode::Fit(None)).unwrap();
         })
     });
 
     c.bench_function("set_jpg_from_memory", |b| {
         let image = image::open("tests/test_images/test1.jpg").unwrap();
         b.iter(|| {
-            set_from_memory(image.clone(), vec![]).unwrap();
+            set_from_memory(image.clone(), vec![], CropMode::Fit(None)).unwrap();
         })
     });
 
     c.bench_function("set_png_from_memory", |b| {
         let image = image::open("tests/test_images/test2.png").unwrap();
         b.iter(|| {
-            set_from_memory(image.clone(), vec![]).unwrap();
+            set_from_memory(image.clone(), vec![], CropMode::Fit(None)).unwrap();
         })
     });
 
     c.bench_function("set_bmp_from_memory", |b| {
         let image = image::open("tests/test_images/test3.bmp").unwrap();
         b.iter(|| {
-            set_from_memory(image.clone(), vec![]).unwrap();
+            set_from_memory(image.clone(), vec![], CropMode::Fit(None)).unwrap();
         })
     });
 }

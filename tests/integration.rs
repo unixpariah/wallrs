@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use wlrs::{set_from_memory, set_from_path};
+use wlrs::{set_from_memory, set_from_path, CropMode};
 
 const TEST_IMG_DIR: &str = "tests/test_images";
 const TEST_IMGS: [&str; 3] = [
@@ -35,28 +35,33 @@ fn make_test_imgs() {
 
 fn set_empty_image() {
     let img = image::RgbImage::new(0, 0);
-    assert!(set_from_memory(img, vec![]).is_err());
+    assert!(set_from_memory(img, vec![], CropMode::Fit(None)).is_err());
 }
 
 fn set_images() {
-    make_test_imgs();
     TEST_IMGS.iter().for_each(|test_img| {
         let img = image::open(test_img).unwrap();
-        assert!(set_from_memory(img.clone(), vec![]).is_ok());
-        assert!(set_from_path(test_img, vec![]).is_ok());
+        assert!(set_from_memory(img, vec![0], CropMode::No(Some([0, 255, 0]))).is_ok());
+        assert!(set_from_path(test_img, vec![1], CropMode::Fit(Some([255, 0, 0]))).is_ok());
     });
 }
 
 fn set_image_that_does_not_exist() {
-    make_test_imgs();
-    assert!(set_from_path("", vec![]).is_err());
+    assert!(set_from_path("", vec![], CropMode::Fit(None)).is_err());
 }
 
 fn set_image_after_error() {
     let img = image::RgbImage::new(0, 0);
-    assert!(set_from_memory(img, vec![]).is_err());
+    assert!(set_from_memory(img, vec![], CropMode::Fit(None)).is_err());
     let img = image::open(TEST_IMGS[0]).unwrap();
-    assert!(set_from_memory(img, vec![]).is_ok());
+    assert!(set_from_memory(img, vec![], CropMode::Fit(None)).is_ok());
+}
+
+fn set_different_wallpapers() {
+    let img1 = image::open(TEST_IMGS[0]).unwrap();
+    let img2 = image::open(TEST_IMGS[2]).unwrap();
+    assert!(set_from_memory(img1.clone(), vec![0], CropMode::Fit(None)).is_ok());
+    assert!(set_from_memory(img2.clone(), vec![1], CropMode::Fit(None)).is_ok());
 }
 
 #[cfg(test)]
@@ -71,5 +76,6 @@ mod tests {
         set_images();
         set_image_that_does_not_exist();
         set_image_after_error();
+        set_different_wallpapers();
     }
 }

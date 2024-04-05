@@ -80,9 +80,13 @@ pub fn x11(
             if wallpaper_data.output_num.contains(&(index as u8))
                 || wallpaper_data.output_num.is_empty()
             {
-                let image =
-                    resize_image(&wallpaper_data.image, scr.width as u32, scr.height as u32)
-                        .map_err(|_| WlrsError::CustomError("Failed to resize image"))?;
+                let image = resize_image(
+                    &wallpaper_data.image,
+                    scr.width as u32,
+                    scr.height as u32,
+                    [0; 3],
+                )
+                .map_err(|_| WlrsError::CustomError("Failed to resize image"))?;
                 let _ = conn.put_image(
                     ImageFormat::Z_PIXMAP,
                     pixmap,

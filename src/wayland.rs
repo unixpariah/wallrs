@@ -1,5 +1,8 @@
-use crate::{error::WlrsError, helpers::resize_image, WallpaperData};
-use image::RgbImage;
+use crate::{
+    error::WlrsError,
+    helpers::{pad, resize_image},
+    CropMode, WallpaperData,
+};
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
     delegate_compositor, delegate_layer, delegate_output, delegate_registry, delegate_shm,
@@ -58,7 +61,9 @@ impl Surface {
         }
     }
 
-    fn draw(&mut self, image: RgbImage, output_num: Vec<u8>) -> Result<(), Box<dyn Error>> {
+    fn draw(&mut self, wallpaper_data: WallpaperData) -> Result<(), Box<dyn Error>> {
+        let output_num = wallpaper_data.output_num;
+        let mut image = wallpaper_data.image;
         self.outputs
             .iter()
             .enumerate()
@@ -73,8 +78,26 @@ impl Surface {
                 let (buffer, canvas) =
                     pool.create_buffer(width, height, width * 3, wl_shm::Format::Bgr888)?;
                 if self.cache.get(&width).is_none() {
-                    let resized_image = resize_image(&image, width as u32, height as u32)?;
-                    self.cache.insert(width, resized_image);
+                    match wallpaper_data.crop_mode {
+                        CropMode::Fit(color) => {
+                            let resized_image = resize_image(
+                                &image,
+                                width as u32,
+                                height as u32,
+                                color.unwrap_or([0, 0, 0]),
+                            )?;
+                            self.cache.insert(width, resized_image);
+                        }
+                        CropMode::No(color) => {
+                            let img = pad(
+                                &mut image,
+                                width as u32,
+                                height as u32,
+                                color.unwrap_or([0, 0, 0]),
+                            )?;
+                            self.cache.insert(width, img);
+                        }
+                    }
                 }
 
                 // This unwrap is safe because we just inserted the value
@@ -214,7 +237,7 @@ pub fn wayland(
         if surface.outputs.iter().all(|output| output.configured) && !surface.outputs.is_empty() {
             let wallpaper_data = rx.recv()?;
             surface
-                .draw(wallpaper_data.image, wallpaper_data.output_num)
+                .draw(wallpaper_data)
                 .map_err(|_| WlrsError::CustomError("Failed to draw image"))?;
             _ = tx.send(Ok(()));
         }

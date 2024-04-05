@@ -8,7 +8,7 @@ pub enum WlrsError {
     ImageError(image::ImageError),
     LockError(&'static str),
     CustomError(&'static str),
-    SendError(mpsc::SendError<WallpaperData>),
+    SendError(&'static str),
     ReceiverError(mpsc::RecvError),
     UnsupportedError(String),
     WaylandError(&'static str),
@@ -76,8 +76,8 @@ impl From<image::ImageError> for WlrsError {
 }
 
 impl From<mpsc::SendError<WallpaperData>> for WlrsError {
-    fn from(err: mpsc::SendError<WallpaperData>) -> WlrsError {
-        WlrsError::SendError(err)
+    fn from(_err: mpsc::SendError<WallpaperData>) -> WlrsError {
+        WlrsError::SendError("Failed to send wallpaper data")
     }
 }
 

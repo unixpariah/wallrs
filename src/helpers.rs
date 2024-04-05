@@ -6,15 +6,17 @@ pub(crate) fn resize_image(
     image: &RgbImage,
     width: u32,
     height: u32,
+    color: [u8; 3],
 ) -> Result<Vec<u8>, Box<dyn Error>> {
     let (img_w, img_h) = image.dimensions();
     let image = image.as_raw().to_vec();
 
     if img_w == width && img_h == height {
         return pad(
-            image::RgbImage::from_raw(width, height, image).ok_or("")?,
+            &mut image::RgbImage::from_raw(width, height, image).ok_or("")?,
             width,
             height,
+            color,
         );
     }
 
@@ -54,23 +56,27 @@ pub(crate) fn resize_image(
     let dst = dst.into_vec();
 
     pad(
-        image::RgbImage::from_raw(trg_w, trg_h, dst).ok_or("")?,
+        &mut image::RgbImage::from_raw(trg_w, trg_h, dst).ok_or("")?,
         width,
         height,
+        color,
     )
 }
 
-fn pad(mut img: RgbImage, trg_w: u32, trg_h: u32) -> Result<Vec<u8>, Box<dyn Error>> {
-    let color = [0, 0, 0];
-
+pub(crate) fn pad(
+    img: &mut RgbImage,
+    trg_w: u32,
+    trg_h: u32,
+    color: [u8; 3],
+) -> Result<Vec<u8>, Box<dyn Error>> {
     if img.dimensions() == (trg_w, trg_h) {
-        return Ok(img.into_vec());
+        return Ok(img.to_vec());
     }
 
     let (trg_w, trg_h) = (trg_w as usize, trg_h as usize);
     let mut padded = Vec::with_capacity(trg_w * trg_h * 3);
 
-    let img = image::imageops::crop(&mut img, 0, 0, trg_w as u32, trg_h as u32).to_image();
+    let img = image::imageops::crop(img, 0, 0, trg_w as u32, trg_h as u32).to_image();
     let (img_w, img_h) = img.dimensions();
     let (img_w, img_h) = (img_w as usize, img_h as usize);
     let raw_img = img.into_vec();

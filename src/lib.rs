@@ -14,9 +14,10 @@ use std::{
 use wayland::wayland;
 use x11::x11;
 
-pub struct WallpaperData {
+pub(crate) struct WallpaperData {
     image: RgbImage,
     output_num: Vec<u8>,
+    crop_mode: CropMode,
 }
 
 struct Channel {
@@ -41,6 +42,14 @@ impl Channel {
     }
 }
 
+/// Tactic to use when resizing the image
+pub enum CropMode {
+    /// Center the image and fill the remaining space with specified color, defaults to black
+    No(Option<[u8; 3]>),
+    /// Resize the image to fit the screen while maintaining aspect ratio, filling the remaining with specified color if provided, defaults to black
+    Fit(Option<[u8; 3]>),
+}
+
 static CHANNEL: Mutex<Option<Channel>> = Mutex::new(None);
 
 /// Set the wallpaper from a file path
@@ -48,23 +57,24 @@ static CHANNEL: Mutex<Option<Channel>> = Mutex::new(None);
 /// # Example
 ///
 /// ```no_run
-/// use wlrs::set_from_path;
+/// use wlrs::{set_from_path, CropMode};
 ///
 /// // Set to first monitor
-/// set_from_path("path/to/image.png", vec![0]).unwrap();
+/// set_from_path("path/to/image.png", vec![0], CropMode::Fit(None)).unwrap();
 ///
 /// // Set to multiple monitors
-/// set_from_path("path/to/image.png", vec![0, 1]).unwrap();
+/// set_from_path("path/to/image.png", vec![0, 1], CropMode::Fit(None)).unwrap();
 ///
 /// // Set to all monitors
-/// set_from_path("path/to/image.png", Vec::new()).unwrap();
+/// set_from_path("path/to/image.png", Vec::new(), CropMode::Fit(None)).unwrap();
 /// ```
-pub fn set_from_path<T>(path: T, output_num: Vec<u8>) -> Result<(), WlrsError>
+
+pub fn set_from_path<T>(path: T, output_num: Vec<u8>, crop_mode: CropMode) -> Result<(), WlrsError>
 where
     T: AsRef<Path>,
 {
     let image = image::open(path)?;
-    set_from_memory(image, output_num)?;
+    set_from_memory(image, output_num, crop_mode)?;
     Ok(())
 }
 
@@ -74,21 +84,25 @@ where
 ///
 /// ```
 /// use image::RgbImage;
-/// use wlrs::set_from_memory;
+/// use wlrs::{set_from_memory, CropMode};
 ///
 /// // Set to first monitor
 /// let image = RgbImage::new(1920, 1080);
-/// set_from_memory(image, vec![0]).unwrap();
+/// set_from_memory(image, vec![0], CropMode::Fit(None)).unwrap();
 ///
 /// // Set to multiple monitors
 /// let image = RgbImage::new(1920, 1080);
-/// set_from_memory(image, vec![0, 1]).unwrap();
+/// set_from_memory(image, vec![0, 1], CropMode::Fit(None)).unwrap();
 ///
 /// // Set to all monitors
 /// let image = RgbImage::new(1920, 1080);
-/// set_from_memory(image, Vec::new()).unwrap();
+/// set_from_memory(image, Vec::new(), CropMode::Fit(None)).unwrap();
 /// ```
-pub fn set_from_memory<T>(image: T, output_num: Vec<u8>) -> Result<(), WlrsError>
+pub fn set_from_memory<T>(
+    image: T,
+    output_num: Vec<u8>,
+    crop_mode: CropMode,
+) -> Result<(), WlrsError>
 where
     T: Into<RgbImage>,
 {
@@ -116,6 +130,7 @@ where
     let wallpaper_data = WallpaperData {
         image: image.into(),
         output_num,
+        crop_mode,
     };
 
     // This is always Some at this point
