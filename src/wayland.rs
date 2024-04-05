@@ -42,15 +42,15 @@ struct Surface {
 }
 
 impl Surface {
-    fn new(globals: &GlobalList, qh: &wayland_client::QueueHandle<Self>) -> Self {
-        let compositor_state =
-            CompositorState::bind(globals, qh).expect("Failed to bind compositor");
-        let layer_shell = LayerShell::bind(globals, qh).expect(
-            "Failed to bind layer shell, check if the compositor supports layer shell protocol.",
-        );
-        let shm = Shm::bind(globals, qh).expect("Failed to bind shm");
+    fn new(
+        globals: &GlobalList,
+        qh: &wayland_client::QueueHandle<Self>,
+    ) -> Result<Self, WlrsError> {
+        let compositor_state = CompositorState::bind(globals, qh)?;
+        let layer_shell = LayerShell::bind(globals, qh)?;
+        let shm = Shm::bind(globals, qh)?;
 
-        Self {
+        Ok(Self {
             compositor_state,
             layer_shell,
             output_state: OutputState::new(globals, qh),
@@ -58,7 +58,7 @@ impl Surface {
             shm,
             outputs: Vec::new(),
             cache: HashMap::new(),
-        }
+        })
     }
 
     fn draw(&mut self, wallpaper_data: WallpaperData) -> Result<(), WlrsError> {
@@ -232,7 +232,7 @@ pub fn wayland(
     let conn = Connection::connect_to_env()?;
     let (globals, mut event_queue) = registry_queue_init(&conn)?;
     let qh = event_queue.handle();
-    let mut surface = Surface::new(&globals, &qh);
+    let mut surface = Surface::new(&globals, &qh)?;
 
     loop {
         event_queue.blocking_dispatch(&mut surface)?;

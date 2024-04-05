@@ -4,7 +4,7 @@ mod wayland;
 mod x11;
 
 use crate::error::WlrsError;
-pub use image::RgbImage;
+pub use image;
 use std::{
     env,
     path::Path,
@@ -15,7 +15,7 @@ use wayland::wayland;
 use x11::x11;
 
 pub(crate) struct WallpaperData {
-    image: RgbImage,
+    image: image::RgbImage,
     output_num: Vec<u8>,
     crop_mode: CropMode,
 }
@@ -106,24 +106,18 @@ pub fn set_from_memory<T>(
     crop_mode: CropMode,
 ) -> Result<(), WlrsError>
 where
-    T: Into<RgbImage>,
+    T: Into<image::RgbImage>,
 {
     let mut channel = CHANNEL.lock()?;
-
     if channel.is_none() {
         let (tx, rx) = mpsc::channel();
         let (res_tx, res_rx) = mpsc::channel();
         *channel = Some(Channel::new(tx, res_rx));
-
         thread::spawn(move || {
-            let error = match env::var("XDG_SESSION_TYPE")
-                .unwrap_or_default()
-                .to_lowercase()
-                .as_str()
-            {
-                "wayland" => wayland(rx, res_tx.clone()),
-                "x11" | "tty" => x11(rx, res_tx.clone()),
-                session_type => Err(WlrsError::UnsupportedError(session_type.to_string())),
+            let error = match (env::var("WAYLAND_DISPLAY"), env::var("DISPLAY")) {
+                (Ok(_), _) => wayland(rx, res_tx.clone()),
+                (_, Ok(_)) => x11(rx, res_tx.clone()),
+                _ => Err(WlrsError::UnsupportedError("No display server".to_string())),
             };
             _ = res_tx.send(error);
         });

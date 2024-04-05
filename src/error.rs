@@ -1,5 +1,6 @@
 use smithay_client_toolkit::shm::{slot::CreateBufferError, CreatePoolError};
 use std::sync::{mpsc, MutexGuard, PoisonError};
+use wayland_client::globals::BindError;
 use x11rb::errors::{ConnectError, ConnectionError, ReplyError, ReplyOrIdError};
 
 use crate::{Channel, WallpaperData};
@@ -110,6 +111,13 @@ impl From<CreatePoolError> for WlrsError {
 impl From<CreateBufferError> for WlrsError {
     fn from(_err: CreateBufferError) -> WlrsError {
         WlrsError::WaylandError("Failed to create shm buffer")
+    }
+}
+
+impl From<BindError> for WlrsError {
+    fn from(err: BindError) -> WlrsError {
+        let err_str = Box::leak(err.to_string().into_boxed_str());
+        WlrsError::WaylandError(err_str)
     }
 }
 
