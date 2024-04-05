@@ -90,18 +90,15 @@ pub fn x11(
                         scr.width as u32,
                         scr.height as u32,
                         color.unwrap_or([0, 0, 0]),
-                    )
-                    .map_err(|_| WlrsError::CustomError("Failed to pad image"))?,
+                    )?,
                     CropMode::Fit(color) => resize_image(
                         &wallpaper_data.image,
                         scr.width as u32,
                         scr.height as u32,
                         color.unwrap_or([0, 0, 0]),
-                    )
-                    .map_err(|_| WlrsError::CustomError("Failed to resize image"))?,
+                    )?,
                     CropMode::Crop => {
-                        crop_image(&wallpaper_data.image, scr.width as u32, scr.height as u32)
-                            .map_err(|_| WlrsError::CustomError("Failed to crop image"))?
+                        crop_image(&wallpaper_data.image, scr.width as u32, scr.height as u32)?
                     }
                 };
                 let _ = conn.put_image(

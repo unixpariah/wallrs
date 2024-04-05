@@ -17,7 +17,7 @@ use smithay_client_toolkit::{
     },
     shm::{slot::SlotPool, Shm, ShmHandler},
 };
-use std::{collections::HashMap, error::Error, sync::mpsc};
+use std::{collections::HashMap, sync::mpsc};
 use wayland_client::{
     globals::{registry_queue_init, GlobalList},
     protocol::{wl_output, wl_shm, wl_surface},
@@ -61,7 +61,7 @@ impl Surface {
         }
     }
 
-    fn draw(&mut self, wallpaper_data: WallpaperData) -> Result<(), Box<dyn Error>> {
+    fn draw(&mut self, wallpaper_data: WallpaperData) -> Result<(), WlrsError> {
         let output_num = wallpaper_data.output_num;
         let mut image = wallpaper_data.image;
 
@@ -70,11 +70,16 @@ impl Surface {
             .enumerate()
             .try_for_each(|(index, output)| {
                 if !output_num.contains(&(index as u8)) && !output_num.is_empty() {
-                    return Ok::<(), Box<dyn Error>>(());
+                    return Ok(());
                 }
 
-                let info = self.output_state.info(&output.output).ok_or("")?;
-                let (width, height) = info.logical_size.ok_or("")?;
+                let info = self
+                    .output_state
+                    .info(&output.output)
+                    .ok_or(WlrsError::WaylandError("Output info not found"))?;
+                let (width, height) = info
+                    .logical_size
+                    .ok_or(WlrsError::WaylandError("Logical size not found"))?;
                 let mut pool = SlotPool::new((width * height * 3) as usize, &self.shm)?;
                 let (buffer, canvas) =
                     pool.create_buffer(width, height, width * 3, wl_shm::Format::Bgr888)?;
@@ -109,7 +114,7 @@ impl Surface {
 
                 self.cache = HashMap::new();
 
-                Ok::<(), Box<dyn Error>>(())
+                Ok(())
             })
     }
 }
@@ -233,9 +238,7 @@ pub fn wayland(
         event_queue.blocking_dispatch(&mut surface)?;
         if surface.outputs.iter().all(|output| output.configured) && !surface.outputs.is_empty() {
             let wallpaper_data = rx.recv()?;
-            surface
-                .draw(wallpaper_data)
-                .map_err(|_| WlrsError::CustomError("Failed to draw image"))?;
+            surface.draw(wallpaper_data)?;
             _ = tx.send(Ok(()));
         }
         surface

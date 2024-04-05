@@ -1,3 +1,4 @@
+use smithay_client_toolkit::shm::{slot::CreateBufferError, CreatePoolError};
 use std::sync::{mpsc, MutexGuard, PoisonError};
 use x11rb::errors::{ConnectError, ConnectionError, ReplyError, ReplyOrIdError};
 
@@ -13,6 +14,7 @@ pub enum WlrsError {
     UnsupportedError(String),
     WaylandError(&'static str),
     XorgError(&'static str),
+    SizeError(&'static str),
 }
 
 impl std::fmt::Debug for WlrsError {
@@ -87,6 +89,30 @@ impl From<mpsc::RecvError> for WlrsError {
     }
 }
 
+impl From<fast_image_resize::DifferentTypesOfPixelsError> for WlrsError {
+    fn from(err: fast_image_resize::DifferentTypesOfPixelsError) -> WlrsError {
+        WlrsError::UnsupportedError(err.to_string())
+    }
+}
+
+impl From<fast_image_resize::ImageBufferError> for WlrsError {
+    fn from(err: fast_image_resize::ImageBufferError) -> WlrsError {
+        WlrsError::UnsupportedError(err.to_string())
+    }
+}
+
+impl From<CreatePoolError> for WlrsError {
+    fn from(_err: CreatePoolError) -> WlrsError {
+        WlrsError::WaylandError("Failed to create shm pool")
+    }
+}
+
+impl From<CreateBufferError> for WlrsError {
+    fn from(_err: CreateBufferError) -> WlrsError {
+        WlrsError::WaylandError("Failed to create shm buffer")
+    }
+}
+
 impl std::fmt::Display for WlrsError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
@@ -98,6 +124,7 @@ impl std::fmt::Display for WlrsError {
             WlrsError::UnsupportedError(err) => write!(f, "UnsupportedError: {}", err),
             WlrsError::WaylandError(err) => write!(f, "WaylandError: {}", err),
             WlrsError::XorgError(err) => write!(f, "XorgError: {}", err),
+            WlrsError::SizeError(err) => write!(f, "SizeError: {}", err),
         }
     }
 }

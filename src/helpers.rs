@@ -1,19 +1,22 @@
 use fast_image_resize::{FilterType, PixelType, Resizer};
 use image::RgbImage;
-use std::{error::Error, num::NonZeroU32};
+use std::num::NonZeroU32;
+
+use crate::error::WlrsError;
 
 pub(crate) fn resize_image(
     image: &RgbImage,
     width: u32,
     height: u32,
     color: [u8; 3],
-) -> Result<Vec<u8>, Box<dyn Error>> {
+) -> Result<Vec<u8>, WlrsError> {
     let (img_w, img_h) = image.dimensions();
     let image = image.as_raw().to_vec();
 
     if img_w == width && img_h == height {
         return pad(
-            &mut image::RgbImage::from_raw(width, height, image).ok_or("")?,
+            &mut image::RgbImage::from_raw(width, height, image)
+                .ok_or(WlrsError::CustomError(""))?,
             width,
             height,
             color,
@@ -35,14 +38,19 @@ pub(crate) fn resize_image(
     let trg_h = trg_h.min(height);
 
     let src = fast_image_resize::Image::from_vec_u8(
-        NonZeroU32::new(img_w).ok_or("")?,
-        NonZeroU32::new(img_h).ok_or("")?,
+        NonZeroU32::new(img_w)
+            .ok_or(WlrsError::SizeError("Width of image must be bigger than 0"))?,
+        NonZeroU32::new(img_h).ok_or(WlrsError::SizeError(
+            "Height of image must be bigger than 0",
+        ))?,
         image,
         PixelType::U8x3,
     )?;
 
-    let new_w = NonZeroU32::new(trg_w).ok_or("")?;
-    let new_h = NonZeroU32::new(trg_h).ok_or("")?;
+    let new_w =
+        NonZeroU32::new(trg_w).ok_or(WlrsError::SizeError("Your monitor has 0 width (???)"))?;
+    let new_h =
+        NonZeroU32::new(trg_h).ok_or(WlrsError::SizeError("Your monitor has 0 height (???)"))?;
 
     let mut dst = fast_image_resize::Image::new(new_w, new_h, PixelType::U8x3);
     let mut dst_view = dst.view_mut();
@@ -56,7 +64,7 @@ pub(crate) fn resize_image(
     let dst = dst.into_vec();
 
     pad(
-        &mut image::RgbImage::from_raw(trg_w, trg_h, dst).ok_or("")?,
+        &mut image::RgbImage::from_raw(trg_w, trg_h, dst).ok_or(WlrsError::CustomError(""))?,
         width,
         height,
         color,
@@ -68,7 +76,7 @@ pub(crate) fn pad(
     trg_w: u32,
     trg_h: u32,
     color: [u8; 3],
-) -> Result<Vec<u8>, Box<dyn Error>> {
+) -> Result<Vec<u8>, WlrsError> {
     if img.dimensions() == (trg_w, trg_h) {
         return Ok(img.to_vec());
     }
@@ -121,39 +129,32 @@ pub(crate) fn pad(
     Ok(padded)
 }
 
-pub fn crop_image(img: &RgbImage, width: u32, height: u32) -> Result<Vec<u8>, String> {
-    let resized_img = if (img.width(), img.height()) != (width, height) {
-        let pixel_type = PixelType::U8x3;
-        let src = match fast_image_resize::Image::from_vec_u8(
-            NonZeroU32::new(img.width()).unwrap(),
-            NonZeroU32::new(img.height()).unwrap(),
-            img.to_vec(),
-            pixel_type,
-        ) {
-            Ok(i) => i,
-            Err(e) => return Err(e.to_string()),
-        };
+pub fn crop_image(img: &RgbImage, width: u32, height: u32) -> Result<Vec<u8>, WlrsError> {
+    if (img.width(), img.height()) == (width, height) {
+        return Ok(img.to_vec());
+    }
 
-        // We unwrap below because we know the outputs's dimensions should never be 0
-        let new_w = NonZeroU32::new(width).unwrap();
-        let new_h = NonZeroU32::new(height).unwrap();
-        let mut src_view = src.view();
-        src_view.set_crop_box_to_fit_dst_size(new_w, new_h, Some((0.5, 0.5)));
+    let pixel_type = PixelType::U8x3;
+    let src = fast_image_resize::Image::from_vec_u8(
+        NonZeroU32::new(img.width()).ok_or(WlrsError::SizeError("Empty image"))?,
+        NonZeroU32::new(img.height()).ok_or(WlrsError::SizeError("Empty image"))?,
+        img.to_vec(),
+        pixel_type,
+    )?;
 
-        let mut dst = fast_image_resize::Image::new(new_w, new_h, pixel_type);
-        let mut dst_view = dst.view_mut();
+    // We unwrap below because we know the outputs's dimensions should never be 0
+    let new_w = NonZeroU32::new(width).ok_or(WlrsError::SizeError("Empty image"))?;
+    let new_h = NonZeroU32::new(height).ok_or(WlrsError::SizeError("Empty image"))?;
+    let mut src_view = src.view();
+    src_view.set_crop_box_to_fit_dst_size(new_w, new_h, Some((0.5, 0.5)));
 
-        let mut resizer = Resizer::new(fast_image_resize::ResizeAlg::Convolution(
-            FilterType::Lanczos3,
-        ));
-        if let Err(e) = resizer.resize(&src_view, &mut dst_view) {
-            return Err(e.to_string());
-        }
+    let mut dst = fast_image_resize::Image::new(new_w, new_h, pixel_type);
+    let mut dst_view = dst.view_mut();
 
-        dst.into_vec()
-    } else {
-        img.to_vec()
-    };
+    let mut resizer = Resizer::new(fast_image_resize::ResizeAlg::Convolution(
+        FilterType::Lanczos3,
+    ));
+    resizer.resize(&src_view, &mut dst_view)?;
 
-    Ok(resized_img)
+    Ok(dst.into_vec())
 }
