@@ -158,3 +158,77 @@ pub fn crop_image(img: &RgbImage, width: u32, height: u32) -> Result<Vec<u8>, Wl
 
     Ok(dst.into_vec())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resize_image() {
+        let img = image::RgbImage::new(1920, 1080);
+        let resized = resize_image(&img, 1920, 1080, [0, 0, 0]).unwrap();
+        assert_eq!(resized.len(), 1920 * 1080 * 3);
+
+        let img = image::RgbImage::new(500, 1080);
+        let resized = resize_image(&img, 1920, 1080, [0, 0, 0]).unwrap();
+        assert_eq!(resized.len(), 1920 * 1080 * 3);
+
+        let img = image::RgbImage::new(1920, 500);
+        let resized = resize_image(&img, 1920, 1080, [0, 0, 0]).unwrap();
+        assert_eq!(resized.len(), 1920 * 1080 * 3);
+
+        let img = image::RgbImage::new(1920, 0);
+        let resized = resize_image(&img, 1920, 1080, [0, 0, 0]);
+        assert!(resized.is_err());
+
+        let img = image::RgbImage::new(0, 1080);
+        let resized = resize_image(&img, 1920, 1080, [0, 0, 0]);
+        assert!(resized.is_err());
+    }
+
+    #[test]
+    fn test_pad() {
+        let mut img = image::RgbImage::new(1920, 1080);
+        let padded = pad(&mut img, 1920, 1080, [0, 0, 0]).unwrap();
+        assert_eq!(padded.len(), 1920 * 1080 * 3);
+
+        let mut img = image::RgbImage::new(500, 1080);
+        let padded = pad(&mut img, 1920, 1080, [0, 0, 0]).unwrap();
+        assert_eq!(padded.len(), 1920 * 1080 * 3);
+
+        let mut img = image::RgbImage::new(1920, 500);
+        let padded = pad(&mut img, 1920, 1080, [0, 0, 0]).unwrap();
+        assert_eq!(padded.len(), 1920 * 1080 * 3);
+
+        let mut img = image::RgbImage::new(1920, 0);
+        let padded = pad(&mut img, 1920, 1080, [0, 0, 0]);
+        assert!(padded.is_ok());
+
+        let mut img = image::RgbImage::new(0, 1080);
+        let padded = pad(&mut img, 1920, 1080, [0, 0, 0]);
+        assert!(padded.is_ok());
+    }
+
+    #[test]
+    fn test_crop_image() {
+        let img = image::RgbImage::new(1920, 1080);
+        let cropped = crop_image(&img, 1920, 1080).unwrap();
+        assert_eq!(cropped.len(), 1920 * 1080 * 3);
+
+        let img = image::RgbImage::new(500, 1080);
+        let cropped = crop_image(&img, 1920, 1080).unwrap();
+        assert_eq!(cropped.len(), 1920 * 1080 * 3);
+
+        let img = image::RgbImage::new(1920, 500);
+        let cropped = crop_image(&img, 1920, 1080).unwrap();
+        assert_eq!(cropped.len(), 1920 * 1080 * 3);
+
+        let img = image::RgbImage::new(1920, 0);
+        let cropped = crop_image(&img, 1920, 1080);
+        assert!(cropped.is_err());
+
+        let img = image::RgbImage::new(0, 1080);
+        let cropped = crop_image(&img, 1920, 1080);
+        assert!(cropped.is_err());
+    }
+}
