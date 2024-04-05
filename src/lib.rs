@@ -48,6 +48,8 @@ pub enum CropMode {
     No(Option<[u8; 3]>),
     /// Resize the image to fit the screen while maintaining aspect ratio, filling the remaining with specified color if provided, defaults to black
     Fit(Option<[u8; 3]>),
+    /// Crop the image to fit the screen
+    Crop,
 }
 
 static CHANNEL: Mutex<Option<Channel>> = Mutex::new(None);

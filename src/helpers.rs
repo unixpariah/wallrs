@@ -120,3 +120,40 @@ pub(crate) fn pad(
 
     Ok(padded)
 }
+
+pub fn crop_image(img: &RgbImage, width: u32, height: u32) -> Result<Vec<u8>, String> {
+    let resized_img = if (img.width(), img.height()) != (width, height) {
+        let pixel_type = PixelType::U8x3;
+        let src = match fast_image_resize::Image::from_vec_u8(
+            NonZeroU32::new(img.width()).unwrap(),
+            NonZeroU32::new(img.height()).unwrap(),
+            img.to_vec(),
+            pixel_type,
+        ) {
+            Ok(i) => i,
+            Err(e) => return Err(e.to_string()),
+        };
+
+        // We unwrap below because we know the outputs's dimensions should never be 0
+        let new_w = NonZeroU32::new(width).unwrap();
+        let new_h = NonZeroU32::new(height).unwrap();
+        let mut src_view = src.view();
+        src_view.set_crop_box_to_fit_dst_size(new_w, new_h, Some((0.5, 0.5)));
+
+        let mut dst = fast_image_resize::Image::new(new_w, new_h, pixel_type);
+        let mut dst_view = dst.view_mut();
+
+        let mut resizer = Resizer::new(fast_image_resize::ResizeAlg::Convolution(
+            FilterType::Lanczos3,
+        ));
+        if let Err(e) = resizer.resize(&src_view, &mut dst_view) {
+            return Err(e.to_string());
+        }
+
+        dst.into_vec()
+    } else {
+        img.to_vec()
+    };
+
+    Ok(resized_img)
+}

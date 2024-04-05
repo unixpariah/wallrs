@@ -1,4 +1,8 @@
-use crate::{error::WlrsError, helpers::resize_image, WallpaperData};
+use crate::{
+    error::WlrsError,
+    helpers::{crop_image, pad, resize_image},
+    CropMode, WallpaperData,
+};
 use std::sync::mpsc;
 use x11rb::{
     connect,
@@ -75,18 +79,31 @@ pub fn x11(
     conn.flush()?;
 
     loop {
-        let wallpaper_data = rx.recv()?;
+        let mut wallpaper_data = rx.recv()?;
         screens.iter().enumerate().try_for_each(|(index, scr)| {
             if wallpaper_data.output_num.contains(&(index as u8))
                 || wallpaper_data.output_num.is_empty()
             {
-                let image = resize_image(
-                    &wallpaper_data.image,
-                    scr.width as u32,
-                    scr.height as u32,
-                    [0; 3],
-                )
-                .map_err(|_| WlrsError::CustomError("Failed to resize image"))?;
+                let image = match wallpaper_data.crop_mode {
+                    CropMode::No(color) => pad(
+                        &mut wallpaper_data.image,
+                        scr.width as u32,
+                        scr.height as u32,
+                        color.unwrap_or([0, 0, 0]),
+                    )
+                    .map_err(|_| WlrsError::CustomError("Failed to pad image"))?,
+                    CropMode::Fit(color) => resize_image(
+                        &wallpaper_data.image,
+                        scr.width as u32,
+                        scr.height as u32,
+                        color.unwrap_or([0, 0, 0]),
+                    )
+                    .map_err(|_| WlrsError::CustomError("Failed to resize image"))?,
+                    CropMode::Crop => {
+                        crop_image(&wallpaper_data.image, scr.width as u32, scr.height as u32)
+                            .map_err(|_| WlrsError::CustomError("Failed to crop image"))?
+                    }
+                };
                 let _ = conn.put_image(
                     ImageFormat::Z_PIXMAP,
                     pixmap,

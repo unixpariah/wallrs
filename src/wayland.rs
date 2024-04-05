@@ -1,6 +1,6 @@
 use crate::{
     error::WlrsError,
-    helpers::{pad, resize_image},
+    helpers::{crop_image, pad, resize_image},
     CropMode, WallpaperData,
 };
 use smithay_client_toolkit::{
@@ -64,6 +64,7 @@ impl Surface {
     fn draw(&mut self, wallpaper_data: WallpaperData) -> Result<(), Box<dyn Error>> {
         let output_num = wallpaper_data.output_num;
         let mut image = wallpaper_data.image;
+
         self.outputs
             .iter()
             .enumerate()
@@ -78,26 +79,22 @@ impl Surface {
                 let (buffer, canvas) =
                     pool.create_buffer(width, height, width * 3, wl_shm::Format::Bgr888)?;
                 if self.cache.get(&width).is_none() {
-                    match wallpaper_data.crop_mode {
-                        CropMode::Fit(color) => {
-                            let resized_image = resize_image(
-                                &image,
-                                width as u32,
-                                height as u32,
-                                color.unwrap_or([0, 0, 0]),
-                            )?;
-                            self.cache.insert(width, resized_image);
-                        }
-                        CropMode::No(color) => {
-                            let img = pad(
-                                &mut image,
-                                width as u32,
-                                height as u32,
-                                color.unwrap_or([0, 0, 0]),
-                            )?;
-                            self.cache.insert(width, img);
-                        }
-                    }
+                    let img = match wallpaper_data.crop_mode {
+                        CropMode::Fit(color) => resize_image(
+                            &image,
+                            width as u32,
+                            height as u32,
+                            color.unwrap_or([0, 0, 0]),
+                        )?,
+                        CropMode::No(color) => pad(
+                            &mut image,
+                            width as u32,
+                            height as u32,
+                            color.unwrap_or([0, 0, 0]),
+                        )?,
+                        CropMode::Crop => crop_image(&image, width as u32, height as u32)?,
+                    };
+                    self.cache.insert(width, img);
                 }
 
                 // This unwrap is safe because we just inserted the value
