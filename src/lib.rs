@@ -14,6 +14,7 @@ use std::{
 use wayland::wayland;
 use x11::x11;
 
+#[derive(Clone)]
 pub(crate) struct WallpaperData {
     image: image::RgbImage,
     output_num: Vec<u8>,
@@ -42,6 +43,7 @@ impl Channel {
     }
 }
 
+#[derive(Clone)]
 /// Tactic to use when resizing the image
 pub enum CropMode {
     /// Center the image and fill the remaining space with specified color, defaults to black

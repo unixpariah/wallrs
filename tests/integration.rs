@@ -35,6 +35,7 @@ fn make_test_imgs() {
 
 fn set_empty_image() {
     let img = image::RgbImage::new(0, 0);
+    //set_from_memory(img, vec![], CropMode::Fit(None)).unwrap();
     assert!(set_from_memory(img, vec![], CropMode::Fit(None)).is_err());
 }
 
