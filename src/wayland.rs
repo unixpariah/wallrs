@@ -7,7 +7,6 @@ use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
     delegate_compositor, delegate_layer, delegate_output, delegate_registry, delegate_shm,
     output::{OutputHandler, OutputState},
-    reexports::{calloop, calloop_wayland_source::WaylandSource},
     registry::{ProvidesRegistryState, RegistryState},
     registry_handlers,
     shell::{
@@ -220,36 +219,40 @@ pub fn wayland(
     tx: mpsc::Sender<Result<(), WlrsError>>,
 ) -> Result<(), WlrsError> {
     let conn = Connection::connect_to_env()?;
-    let (globals, event_queue) = registry_queue_init(&conn)?;
+    let (globals, mut event_queue) = registry_queue_init(&conn)?;
     let qh = event_queue.handle();
     let mut wlrs = Wlrs::new(&globals, &qh)?;
 
-    let mut event_loop = calloop::EventLoop::<Wlrs>::try_new().unwrap();
-    WaylandSource::new(conn, event_queue)
-        .insert(event_loop.handle())
-        .unwrap();
-
-    let mut a = false;
     let mut wallpaper_data = rx.recv()?;
     loop {
-        event_loop.dispatch(None, &mut wlrs).unwrap();
-        if a {
-            a = false;
-            wallpaper_data = rx.recv()?;
-        }
-        wlrs.surfaces
+        let drawn = wlrs
+            .surfaces
             .iter_mut()
             .enumerate()
-            .for_each(|(index, surface)| {
+            .map(|(index, surface)| {
                 if surface.is_configured()
                     && (wallpaper_data.output_num.contains(&(index as u8))
                         || wallpaper_data.output_num.is_empty())
                 {
-                    surface.draw(&mut wallpaper_data, &qh, &globals).unwrap();
-                    a = true;
+                    surface.draw(&mut wallpaper_data, &qh, &globals)?;
+                    return Ok::<bool, WlrsError>(true);
                 }
-            });
-        _ = tx.send(Ok(()));
+                Ok(false)
+            })
+            .reduce(|a: Result<bool, _>, b: Result<bool, _>| match (a, b) {
+                (Ok(a), Ok(b)) => Ok(a || b),
+                (Err(e), _) | (_, Err(e)) => Err(e),
+            })
+            .unwrap_or(Ok(false))?;
+
+        if let Err(e) = event_queue.blocking_dispatch(&mut wlrs) {
+            return Err(WlrsError::WaylandError(e.to_string()));
+        }
+
+        if drawn {
+            _ = tx.send(Ok(()));
+            wallpaper_data = rx.recv()?;
+        }
     }
 }
 

@@ -13,7 +13,7 @@ pub enum WlrsError {
     SendError(&'static str),
     ReceiverError(mpsc::RecvError),
     UnsupportedError(String),
-    WaylandError(&'static str),
+    WaylandError(String),
     XorgError(&'static str),
     SizeError(&'static str),
 }
@@ -50,19 +50,19 @@ impl From<ConnectError> for WlrsError {
 
 impl From<wayland_client::ConnectError> for WlrsError {
     fn from(_err: wayland_client::ConnectError) -> WlrsError {
-        WlrsError::WaylandError("Failed to connect to wayland server")
+        WlrsError::WaylandError("Failed to connect to wayland server".into())
     }
 }
 
 impl From<wayland_client::globals::GlobalError> for WlrsError {
     fn from(_err: wayland_client::globals::GlobalError) -> WlrsError {
-        WlrsError::WaylandError("Failed to get globals")
+        WlrsError::WaylandError("Failed to get globals".into())
     }
 }
 
 impl From<wayland_client::DispatchError> for WlrsError {
     fn from(_err: wayland_client::DispatchError) -> WlrsError {
-        WlrsError::WaylandError("Failed to dispatch events")
+        WlrsError::WaylandError("Failed to dispatch events".into())
     }
 }
 
@@ -104,20 +104,20 @@ impl From<fast_image_resize::ImageBufferError> for WlrsError {
 
 impl From<CreatePoolError> for WlrsError {
     fn from(_err: CreatePoolError) -> WlrsError {
-        WlrsError::WaylandError("Failed to create shm pool")
+        WlrsError::WaylandError("Failed to create shm pool".into())
     }
 }
 
 impl From<CreateBufferError> for WlrsError {
     fn from(_err: CreateBufferError) -> WlrsError {
-        WlrsError::WaylandError("Failed to create shm buffer")
+        WlrsError::WaylandError("Failed to create shm buffer".into())
     }
 }
 
 impl From<BindError> for WlrsError {
     fn from(err: BindError) -> WlrsError {
         let err_str = Box::leak(err.to_string().into_boxed_str());
-        WlrsError::WaylandError(err_str)
+        WlrsError::WaylandError(err_str.into())
     }
 }
 
