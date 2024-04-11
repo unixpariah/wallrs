@@ -1,16 +1,19 @@
-use smithay_client_toolkit::shm::{slot::CreateBufferError, CreatePoolError};
+use smithay_client_toolkit::{
+    reexports,
+    shm::{slot::CreateBufferError, CreatePoolError},
+};
 use std::sync::{mpsc, MutexGuard, PoisonError};
 use wayland_client::globals::BindError;
 use x11rb::errors::{ConnectError, ConnectionError, ReplyError, ReplyOrIdError};
 
-use crate::{Channel, WallpaperData};
+use crate::{wayland::Wlrs, Channel, WallpaperData};
 
 #[allow(clippy::enum_variant_names)]
 pub enum WlrsError {
     ImageError(image::ImageError),
     LockError(&'static str),
     CustomError(&'static str),
-    SendError(&'static str),
+    SendError(String),
     ReceiverError(mpsc::RecvError),
     UnsupportedError(String),
     WaylandError(String),
@@ -80,7 +83,7 @@ impl From<image::ImageError> for WlrsError {
 
 impl From<mpsc::SendError<WallpaperData>> for WlrsError {
     fn from(_err: mpsc::SendError<WallpaperData>) -> WlrsError {
-        WlrsError::SendError("Failed to send wallpaper data")
+        WlrsError::SendError("Failed to send wallpaper data".to_string())
     }
 }
 
@@ -118,6 +121,30 @@ impl From<BindError> for WlrsError {
     fn from(err: BindError) -> WlrsError {
         let err_str = Box::leak(err.to_string().into_boxed_str());
         WlrsError::WaylandError(err_str.into())
+    }
+}
+
+impl From<reexports::calloop::Error> for WlrsError {
+    fn from(err: reexports::calloop::Error) -> WlrsError {
+        WlrsError::WaylandError(err.to_string())
+    }
+}
+
+impl From<reexports::calloop::InsertError<reexports::calloop_wayland_source::WaylandSource<Wlrs>>>
+    for WlrsError
+{
+    fn from(
+        err: reexports::calloop::InsertError<
+            reexports::calloop_wayland_source::WaylandSource<Wlrs>,
+        >,
+    ) -> WlrsError {
+        WlrsError::WaylandError(err.to_string())
+    }
+}
+
+impl From<mpsc::SendError<Result<(), WlrsError>>> for WlrsError {
+    fn from(err: mpsc::SendError<Result<(), WlrsError>>) -> WlrsError {
+        WlrsError::SendError(err.to_string())
     }
 }
 

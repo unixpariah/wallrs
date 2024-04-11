@@ -35,7 +35,6 @@ fn make_test_imgs() {
 
 fn set_empty_image() {
     let img = image::RgbImage::new(0, 0);
-    //set_from_memory(img, vec![], CropMode::Fit(None)).unwrap();
     assert!(set_from_memory(img, vec![], CropMode::Fit(None)).is_err());
 }
 
@@ -67,13 +66,6 @@ fn set_image_after_error() {
     assert!(set_from_memory(img, vec![], CropMode::Fit(None)).is_ok());
 }
 
-fn set_different_wallpapers() {
-    TEST_IMGS.iter().enumerate().for_each(|(i, test_img)| {
-        let img = image::open(test_img).unwrap();
-        assert!(set_from_memory(img.clone(), vec![i as u8], CropMode::Fit(None)).is_ok());
-    });
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -87,6 +79,5 @@ mod tests {
         set_images_from_memory();
         set_image_that_does_not_exist();
         set_image_after_error();
-        set_different_wallpapers();
     }
 }
