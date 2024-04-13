@@ -18,7 +18,7 @@ use x11::x11;
 #[derive(Clone)]
 pub(crate) struct WallpaperData {
     image: image::RgbImage,
-    output_num: Vec<u8>,
+    outputs: Vec<usize>,
     crop_mode: CropMode,
 }
 
@@ -81,12 +81,12 @@ static CHANNEL: Mutex<Option<Channel>> = Mutex::new(None);
 /// set_from_path("path/to/image.png", Vec::new(), CropMode::Fit(None)).unwrap();
 /// ```
 
-pub fn set_from_path<T>(path: T, output_num: Vec<u8>, crop_mode: CropMode) -> Result<(), WlrsError>
+pub fn set_from_path<T>(path: T, outputs: Vec<usize>, crop_mode: CropMode) -> Result<(), WlrsError>
 where
     T: AsRef<Path>,
 {
     let image = image::open(path)?;
-    set_from_memory(image, output_num, crop_mode)?;
+    set_from_memory(image, outputs, crop_mode)?;
     Ok(())
 }
 
@@ -112,7 +112,7 @@ where
 /// ```
 pub fn set_from_memory<T>(
     image: T,
-    output_num: Vec<u8>,
+    outputs: Vec<usize>,
     crop_mode: CropMode,
 ) -> Result<(), WlrsError>
 where
@@ -143,7 +143,7 @@ where
 
     let wallpaper_data = WallpaperData {
         image,
-        output_num,
+        outputs,
         crop_mode,
     };
 

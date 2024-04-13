@@ -99,7 +99,7 @@ impl OutputHandler for Wlrs {
             qh,
             surface,
             Layer::Background,
-            Some("ssb"),
+            Some("wlrs"),
             Some(&output),
         );
 
@@ -179,34 +179,34 @@ pub fn wayland(
         .insert_source(ping_source, |_, _, _| {})
         .map_err(|_| WlrsError::WaylandError("Failed to insert listener".to_string()))?;
 
-    let mut wallpaper_data = rx.recv()?;
-
     loop {
-        let drawn = wlrs
-            .surfaces
-            .par_iter_mut()
-            .enumerate()
-            .map(|(index, surface)| {
-                if surface.is_configured()
-                    && (wallpaper_data.output_num.contains(&(index as u8))
-                        || wallpaper_data.output_num.is_empty())
-                {
-                    surface.draw(&wallpaper_data, &qh, &globals)?;
-                    return Ok::<bool, WlrsError>(true);
-                }
-                Ok(false)
-            })
-            .reduce_with(|a, b| match (a, b) {
-                (Ok(a), Ok(b)) => Ok(a || b),
-                (Err(e), _) | (_, Err(e)) => Err(e),
-            })
-            .unwrap_or(Ok(false))?;
+        if wlrs.surfaces.iter().any(|surface| surface.is_configured()) {
+            if let Ok(wallpaper) = rx.try_recv() {
+                let drawn = wlrs
+                    .surfaces
+                    .par_iter_mut()
+                    .enumerate()
+                    .map(|(index, surface)| {
+                        if surface.is_configured()
+                            && (wallpaper.outputs.contains(&index) || wallpaper.outputs.is_empty())
+                        {
+                            surface.draw(&wallpaper, &qh, &globals)?;
+                            return Ok::<bool, WlrsError>(true);
+                        }
+                        Ok(false)
+                    })
+                    .reduce_with(|a, b| match (a, b) {
+                        (Ok(a), Ok(b)) => Ok(a || b),
+                        (Err(e), _) | (_, Err(e)) => Err(e),
+                    })
+                    .unwrap_or(Ok(false))?;
 
-        event_loop.dispatch(None, &mut wlrs)?;
-        if drawn {
-            tx.send(Ok(()))?;
-            wallpaper_data = rx.try_recv().unwrap_or(wallpaper_data);
+                if drawn {
+                    tx.send(Ok(()))?;
+                }
+            }
         }
+        event_loop.dispatch(None, &mut wlrs)?;
     }
 }
 

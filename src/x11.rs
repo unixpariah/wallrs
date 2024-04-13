@@ -3,6 +3,7 @@ use crate::{
     helpers::{crop_image, pad, resize_image},
     CropMode, WallpaperData,
 };
+use rayon::prelude::*;
 use std::sync::mpsc;
 use x11rb::{
     connect,
@@ -79,44 +80,45 @@ pub fn x11(
     conn.flush()?;
 
     loop {
-        let mut wallpaper_data = rx.recv()?;
-        screens.iter().enumerate().try_for_each(|(index, scr)| {
-            if wallpaper_data.output_num.contains(&(index as u8))
-                || wallpaper_data.output_num.is_empty()
-            {
-                let image = match wallpaper_data.crop_mode {
-                    CropMode::No(color) => pad(
-                        &mut wallpaper_data.image,
-                        scr.width as u32,
-                        scr.height as u32,
-                        color.unwrap_or([0, 0, 0]),
-                    )?,
-                    CropMode::Fit(color) => resize_image(
-                        &wallpaper_data.image,
-                        scr.width as u32,
-                        scr.height as u32,
-                        color.unwrap_or([0, 0, 0]),
-                    )?,
-                    CropMode::Crop => {
-                        crop_image(&wallpaper_data.image, scr.width as u32, scr.height as u32)?
-                    }
-                };
-                let _ = conn.put_image(
-                    ImageFormat::Z_PIXMAP,
-                    pixmap,
-                    context,
-                    scr.width,
-                    scr.height,
-                    scr.x,
-                    scr.y,
-                    0,
-                    screen.root_depth,
-                    &image,
-                );
-            }
+        let wallpaper_data = rx.recv()?;
+        screens
+            .par_iter()
+            .enumerate()
+            .try_for_each(|(index, scr)| {
+                if wallpaper_data.outputs.contains(&index) || wallpaper_data.outputs.is_empty() {
+                    let image = match wallpaper_data.crop_mode {
+                        CropMode::No(color) => pad(
+                            &wallpaper_data.image,
+                            scr.width as u32,
+                            scr.height as u32,
+                            color.unwrap_or([0, 0, 0]),
+                        )?,
+                        CropMode::Fit(color) => resize_image(
+                            &wallpaper_data.image,
+                            scr.width as u32,
+                            scr.height as u32,
+                            color.unwrap_or([0, 0, 0]),
+                        )?,
+                        CropMode::Crop => {
+                            crop_image(&wallpaper_data.image, scr.width as u32, scr.height as u32)?
+                        }
+                    };
+                    let _ = conn.put_image(
+                        ImageFormat::Z_PIXMAP,
+                        pixmap,
+                        context,
+                        scr.width,
+                        scr.height,
+                        scr.x,
+                        scr.y,
+                        0,
+                        screen.root_depth,
+                        &image,
+                    );
+                }
 
-            Ok::<(), WlrsError>(())
-        })?;
+                Ok::<(), WlrsError>(())
+            })?;
         conn.kill_client(Kill::ALL_TEMPORARY)?;
         conn.set_close_down_mode(CloseDown::RETAIN_TEMPORARY)?;
         ATOMS.iter().for_each(|atom| {
