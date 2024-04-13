@@ -5,6 +5,7 @@ mod x11;
 
 use crate::error::WlrsError;
 pub use image;
+use smithay_client_toolkit::reexports::calloop;
 use std::{
     env,
     path::Path,
@@ -23,6 +24,7 @@ pub(crate) struct WallpaperData {
 
 struct Channel {
     sender: mpsc::Sender<WallpaperData>,
+    ping: calloop::ping::Ping,
     receiver: mpsc::Receiver<Result<(), WlrsError>>,
 }
 
@@ -30,8 +32,13 @@ impl Channel {
     fn new(
         sender: mpsc::Sender<WallpaperData>,
         receiver: mpsc::Receiver<Result<(), WlrsError>>,
+        ping: calloop::ping::Ping,
     ) -> Self {
-        Self { sender, receiver }
+        Self {
+            sender,
+            receiver,
+            ping,
+        }
     }
 
     fn send(&self, data: WallpaperData) -> Result<(), mpsc::SendError<WallpaperData>> {
@@ -39,6 +46,7 @@ impl Channel {
     }
 
     fn get_reply(&self) -> Result<(), WlrsError> {
+        self.ping.ping();
         self.receiver.recv()?
     }
 }
@@ -110,14 +118,22 @@ pub fn set_from_memory<T>(
 where
     T: Into<image::RgbImage>,
 {
+    let image = image.into();
+    if image.width() == 0 || image.height() == 0 {
+        return Err(WlrsError::SizeError("Empty image"));
+    }
+
     let mut channel = CHANNEL.lock()?;
     if channel.is_none() {
         let (tx, rx) = mpsc::channel();
         let (res_tx, res_rx) = mpsc::channel();
-        *channel = Some(Channel::new(tx, res_rx));
+
+        let (ping, ping_source) = calloop::ping::make_ping().unwrap();
+
+        *channel = Some(Channel::new(tx, res_rx, ping));
         thread::spawn(move || {
             let error = match (env::var("WAYLAND_DISPLAY"), env::var("DISPLAY")) {
-                (Ok(_), _) => wayland(rx, res_tx.clone()),
+                (Ok(_), _) => wayland(rx, res_tx.clone(), ping_source),
                 (_, Ok(_)) => x11(rx, res_tx.clone()),
                 _ => Err(WlrsError::UnsupportedError("No display server".to_string())),
             };
@@ -126,7 +142,7 @@ where
     }
 
     let wallpaper_data = WallpaperData {
-        image: image.into(),
+        image,
         output_num,
         crop_mode,
     };

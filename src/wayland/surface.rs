@@ -62,7 +62,7 @@ impl Surface {
         Ok(())
     }
 
-    pub(crate) fn change_size(&mut self, _qh: &QueueHandle<Wlrs>) {
+    pub(crate) fn change_size(&mut self) {
         if let Some((width, height)) = self.output_info.logical_size {
             self.width = width;
             self.height = height;

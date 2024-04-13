@@ -143,7 +143,7 @@ impl LayerShellHandler for Wlrs {
     fn configure(
         &mut self,
         _conn: &Connection,
-        qh: &QueueHandle<Self>,
+        _qh: &QueueHandle<Self>,
         layer: &LayerSurface,
         _configure: LayerSurfaceConfigure,
         _serial: u32,
@@ -152,7 +152,7 @@ impl LayerShellHandler for Wlrs {
             .iter_mut()
             .find(|surface| &surface.layer_surface == layer)
             .unwrap()
-            .change_size(qh);
+            .change_size();
     }
 }
 
@@ -165,16 +165,21 @@ impl ShmHandler for Wlrs {
 pub fn wayland(
     rx: mpsc::Receiver<WallpaperData>,
     tx: mpsc::Sender<Result<(), WlrsError>>,
+    ping_source: calloop::ping::PingSource,
 ) -> Result<(), WlrsError> {
     let conn = Connection::connect_to_env()?;
     let (globals, event_queue) = registry_queue_init(&conn)?;
     let qh = event_queue.handle();
     let mut wlrs = Wlrs::new(&globals, &qh)?;
 
-    let mut wallpaper_data = rx.recv()?;
-
     let mut event_loop = calloop::EventLoop::try_new()?;
     WaylandSource::new(conn, event_queue).insert(event_loop.handle())?;
+    event_loop
+        .handle()
+        .insert_source(ping_source, |_, _, _| {})
+        .map_err(|_| WlrsError::WaylandError("Failed to insert listener".to_string()))?;
+
+    let mut wallpaper_data = rx.recv()?;
 
     loop {
         let drawn = wlrs
@@ -200,7 +205,7 @@ pub fn wayland(
         event_loop.dispatch(None, &mut wlrs)?;
         if drawn {
             tx.send(Ok(()))?;
-            wallpaper_data = rx.recv()?;
+            wallpaper_data = rx.try_recv().unwrap_or(wallpaper_data);
         }
     }
 }
