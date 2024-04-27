@@ -105,6 +105,7 @@ impl OutputHandler for Wlrs {
 
         if let Some(output_info) = self.output_state.info(&output) {
             layer.set_anchor(Anchor::all());
+            layer.set_exclusive_zone(-1);
             layer.commit();
 
             self.surfaces.push(Surface {
