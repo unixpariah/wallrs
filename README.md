@@ -1,4 +1,4 @@
-# WLRS /wɔːlrəs/ [![crate](https://img.shields.io/crates/v/wlrs.svg)](https://crates.io/crates/wlrs) [![Build Status](https://github.com/unixpariah/wlrs/actions/workflows/tests.yml/badge.svg)](https://github.com/unixpariah/wlrs/actions/workflows/tests.yml) [![codecov](https://codecov.io/gh/unixpariah/wlrs/graph/badge.svg?token=49LRWZ9D1K)](https://codecov.io/gh/unixpariah/wlrs) [![docs](https://docs.rs/wlrs/badge.svg)](https://docs.rs/wlrs/latest/wlrs/index.html) 
+# WLRS /wɔːlrəs/ [![crate](https://img.shields.io/crates/v/wlrs.svg)](https://crates.io/crates/wlrs) [![Build Status](https://github.com/unixpariah/wlrs/actions/workflows/tests.yml/badge.svg)](https://github.com/unixpariah/wlrs/actions/workflows/tests.yml) [![codecov](https://codecov.io/gh/unixpariah/wlrs/graph/badge.svg?token=49LRWZ9D1K)](https://codecov.io/gh/unixpariah/wlrs) [![docs](https://docs.rs/wlrs/badge.svg)](https://docs.rs/wlrs/latest/wlrs/index.html)
 
 Rust library for managing wallpapers
 
@@ -39,13 +39,8 @@ fn main() {
 
   // Set to multiple monitor
   set_from_path("wallpaper.jpg", vec![0, 1]).unwrap();
-  
+
   // Set to all monitors
   set_from_path("wallpaper.jpg", Vec::new())unwrap();
 }
 ```
-
-## TODO
-- Better errors
-- Add different crop modes
-- Fix crashing when new output added

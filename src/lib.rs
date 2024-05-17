@@ -80,7 +80,6 @@ static CHANNEL: Mutex<Option<Channel>> = Mutex::new(None);
 /// // Set to all monitors
 /// set_from_path("path/to/image.png", Vec::new(), CropMode::Fit(None)).unwrap();
 /// ```
-
 pub fn set_from_path<T>(path: T, outputs: Vec<usize>, crop_mode: CropMode) -> Result<(), WlrsError>
 where
     T: AsRef<Path>,
