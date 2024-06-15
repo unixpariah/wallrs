@@ -22,6 +22,16 @@ pub(crate) struct WallpaperData {
     crop_mode: CropMode,
 }
 
+impl WallpaperData {
+    fn new(image: image::RgbImage, outputs: Vec<String>, crop_mode: CropMode) -> Self {
+        Self {
+            image,
+            outputs,
+            crop_mode,
+        }
+    }
+}
+
 struct Channel {
     sender: mpsc::Sender<WallpaperData>,
     ping: calloop::ping::Ping,
@@ -71,13 +81,13 @@ static CHANNEL: Mutex<Option<Channel>> = Mutex::new(None);
 /// ```no_run
 /// use wlrs::{set_from_path, CropMode};
 ///
-/// // Set to first monitor
-/// set_from_path("path/to/image.png", vec![0], CropMode::Fit(None)).unwrap();
+/// // Set to single output
+/// set_from_path("path/to/image.png", vec!["eDP-1".to_string()], CropMode::Fit(None)).unwrap();
 ///
-/// // Set to multiple monitors
-/// set_from_path("path/to/image.png", vec![0, 1], CropMode::Fit(None)).unwrap();
+/// // Set to multiple outputs
+/// set_from_path("path/to/image.png", vec!["eDP-1".to_string(), "HDMI-A-1".to_string()], CropMode::Fit(None)).unwrap();
 ///
-/// // Set to all monitors
+/// // Set to all outputs
 /// set_from_path("path/to/image.png", Vec::new(), CropMode::Fit(None)).unwrap();
 /// ```
 pub fn set_from_path<T>(path: T, outputs: Vec<String>, crop_mode: CropMode) -> Result<(), WlrsError>
@@ -97,15 +107,15 @@ where
 /// use image::RgbImage;
 /// use wlrs::{set_from_memory, CropMode};
 ///
-/// // Set to first monitor
+/// // Set to single output
 /// let image = RgbImage::new(1920, 1080);
-/// set_from_memory(image, vec![0], CropMode::Fit(None)).unwrap();
+/// set_from_memory(image, vec!["eDP-1".to_string()], CropMode::Fit(None)).unwrap();
 ///
-/// // Set to multiple monitors
+/// // Set to multiple outputs
 /// let image = RgbImage::new(1920, 1080);
-/// set_from_memory(image, vec![0, 1], CropMode::Fit(None)).unwrap();
+/// set_from_memory(image, vec!["eDP-1".to_string(), "HDMI-A-1".to_string()], CropMode::Fit(None)).unwrap();
 ///
-/// // Set to all monitors
+/// // Set to all outputs
 /// let image = RgbImage::new(1920, 1080);
 /// set_from_memory(image, Vec::new(), CropMode::Fit(None)).unwrap();
 /// ```
@@ -140,11 +150,7 @@ where
         });
     }
 
-    let wallpaper_data = WallpaperData {
-        image,
-        outputs,
-        crop_mode,
-    };
+    let wallpaper_data = WallpaperData::new(image, outputs, crop_mode);
 
     // This is always Some at this point
     channel.as_ref().unwrap().send(wallpaper_data)?;

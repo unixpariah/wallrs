@@ -40,8 +40,18 @@ fn set_empty_image() {
 
 fn set_images_from_path() {
     TEST_IMGS.iter().for_each(|test_img| {
-        assert!(set_from_path(test_img, vec![0], CropMode::Fit(Some([255, 0, 0]))).is_ok());
-        assert!(set_from_path(test_img, vec![1], CropMode::No(Some([255, 0, 0]))).is_ok());
+        assert!(set_from_path(
+            test_img,
+            vec!["eDP-1".to_string()],
+            CropMode::Fit(Some([255, 0, 0]))
+        )
+        .is_ok());
+        assert!(set_from_path(
+            test_img,
+            vec!["HDMI-A-1".to_string()],
+            CropMode::No(Some([255, 0, 0]))
+        )
+        .is_ok());
         assert!(set_from_path(test_img, vec![], CropMode::Crop).is_ok());
     });
 }
@@ -49,8 +59,18 @@ fn set_images_from_path() {
 fn set_images_from_memory() {
     TEST_IMGS.iter().for_each(|test_img| {
         let img = image::open(test_img).unwrap();
-        assert!(set_from_memory(img.clone(), vec![0], CropMode::Fit(Some([255, 0, 0]))).is_ok());
-        assert!(set_from_memory(img.clone(), vec![1], CropMode::No(Some([255, 0, 0]))).is_ok());
+        assert!(set_from_memory(
+            img.clone(),
+            vec!["eDP-1".to_string()],
+            CropMode::Fit(Some([255, 0, 0]))
+        )
+        .is_ok());
+        assert!(set_from_memory(
+            img.clone(),
+            vec!["HDMI-A-1".to_string()],
+            CropMode::No(Some([255, 0, 0]))
+        )
+        .is_ok());
         assert!(set_from_memory(img, vec![], CropMode::Crop).is_ok());
     });
 }

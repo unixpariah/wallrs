@@ -4,7 +4,7 @@ Rust library for managing wallpapers
 
 ## Supported environments
 
-- Every Wayland compositor that implements layer-shell (e.g. Hyprland, Sway, Wayfire, etc.)
+- Every Wayland compositor that implements layer-shell (e.g. Hyprland, Sway, KDE, etc.)
 - X11 environments that don't have their own wallpaper management (e.g. dwm, i3, bspwm, etc.)
 
 ## Examples:
@@ -14,17 +14,17 @@ Setting from memory:
 use wlrs::set_from_memory;
 
 fn main() {
-  // Set to first monitor
+  // Set to single output
   let wallpaper = image::open("wallpaper.jpg").unwrap();
-  set_from_memory(wallpaper, vec![0]).unwrap();
+  set_from_memory(wallpaper, vec!["eDP-1".to_string(), CropMode::Fit(None)]).unwrap();
 
-  // Set to multiple monitors
+  // Set to multiple outputs
   let wallpaper = image::open("wallpaper.jpg").unwrap();
-  set_from_memory(wallpaper, vec![0, 1]).unwrap();
+  set_from_memory(wallpaper, vec!["eDP-1".to_string(), "HDMI-A-1".to_string(), CropMode::Fit(None)]).unwrap();
 
-  // Set to all monitors
+  // Set to all outputs
   let wallpaper = image::open("wallpaper.jpg").unwrap();
-  set_from_memory(wallpaper, Vec::new()).unwrap();
+  set_from_memory(wallpaper, Vec::new(), CropMode::Fit(None)).unwrap();
 }
 ```
 
@@ -34,13 +34,13 @@ Setting from file path:
 use wlrs::set_from_path;
 
 fn main() {
-  // Set to first monitor
-  set_from_path("wallpaper.jpg", vec![0]).unwrap();
+  // Set to single output
+  set_from_path("wallpaper.jpg", vec!["eDP-1".to_string(), CropMode::Fit(None)]).unwrap();
 
   // Set to multiple monitor
-  set_from_path("wallpaper.jpg", vec![0, 1]).unwrap();
+  set_from_path("wallpaper.jpg", vec!["eDP-1".to_string(), "HDMI-A-1".to_string(), CropMode::Fit(None)]).unwrap();
 
-  // Set to all monitors
-  set_from_path("wallpaper.jpg", Vec::new())unwrap();
+  // Set to all outputs
+  set_from_path("wallpaper.jpg", Vec::new(), CropMode::Fit(None))unwrap();
 }
 ```

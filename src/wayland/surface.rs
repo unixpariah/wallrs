@@ -1,4 +1,3 @@
-use crate::error::WlrsError;
 use smithay_client_toolkit::{
     output::OutputInfo,
     shell::{wlr_layer::LayerSurface, WaylandSurface},
@@ -15,7 +14,7 @@ pub(crate) struct Surface {
 }
 
 impl Surface {
-    pub(crate) fn draw(&mut self) -> Result<(), WlrsError> {
+    pub(crate) fn draw(&mut self) {
         let (width, height) = (self.width, self.height);
 
         let layer = &self.layer_surface;
@@ -25,8 +24,6 @@ impl Surface {
             .wl_surface()
             .attach(Some(self.buffer.wl_buffer()), 0, 0);
         layer.commit();
-
-        Ok(())
     }
 
     pub(crate) fn change_size(&mut self) {

@@ -232,7 +232,7 @@ pub fn wayland(
                         surface
                             .canvas
                             .copy_from_slice(&resize(&wallpaper, [surface.width, surface.height])?);
-                        surface.draw()?;
+                        surface.draw();
                         return Ok::<bool, WlrsError>(true);
                     }
                     Ok(false)
