@@ -1,8 +1,4 @@
-use crate::{
-    error::WlrsError,
-    helpers::{crop_image, pad, resize_image},
-    CropMode, WallpaperData,
-};
+use crate::{error::WlrsError, helpers::resize, WallpaperData};
 use rayon::prelude::*;
 use std::sync::mpsc;
 use x11rb::{
@@ -21,6 +17,7 @@ use x11rb::{
 const ATOMS: &[&str] = &["_XROOTPMAP_ID", "_XSETROOT_ID", "ESETROOT_PMAP_ID"];
 
 struct Screen {
+    name: String,
     width: u16,
     height: u16,
     x: i16,
@@ -41,12 +38,13 @@ pub fn x11(
         .outputs
         .iter()
         .filter_map(|output| {
-            let crtc = conn
+            let output_info = conn
                 .randr_get_output_info(*output, res.config_timestamp)
                 .ok()?
                 .reply()
-                .ok()?
-                .crtc;
+                .ok()?;
+
+            let crtc = output_info.crtc;
 
             if crtc == 0 {
                 return None;
@@ -58,7 +56,10 @@ pub fn x11(
                 .reply()
                 .ok()?;
 
+            let name = String::from_utf8(output_info.name.to_vec()).ok()?;
+
             let screen = Screen {
+                name,
                 width: crtc_info.width,
                 height: crtc_info.height,
                 x: crtc_info.x,
@@ -81,44 +82,25 @@ pub fn x11(
 
     loop {
         let wallpaper_data = rx.recv()?;
-        screens
-            .par_iter()
-            .enumerate()
-            .try_for_each(|(index, scr)| {
-                if wallpaper_data.outputs.contains(&index) || wallpaper_data.outputs.is_empty() {
-                    let image = match wallpaper_data.crop_mode {
-                        CropMode::No(color) => pad(
-                            &wallpaper_data.image,
-                            scr.width as u32,
-                            scr.height as u32,
-                            color.unwrap_or([0, 0, 0]),
-                        )?,
-                        CropMode::Fit(color) => resize_image(
-                            &wallpaper_data.image,
-                            scr.width as u32,
-                            scr.height as u32,
-                            color.unwrap_or([0, 0, 0]),
-                        )?,
-                        CropMode::Crop => {
-                            crop_image(&wallpaper_data.image, scr.width as u32, scr.height as u32)?
-                        }
-                    };
-                    let _ = conn.put_image(
-                        ImageFormat::Z_PIXMAP,
-                        pixmap,
-                        context,
-                        scr.width,
-                        scr.height,
-                        scr.x,
-                        scr.y,
-                        0,
-                        screen.root_depth,
-                        &image,
-                    );
-                }
+        screens.par_iter().try_for_each(|scr| {
+            if wallpaper_data.outputs.contains(&scr.name) || wallpaper_data.outputs.is_empty() {
+                let image = resize(&wallpaper_data, [width as i32, height as i32]).unwrap();
+                let _ = conn.put_image(
+                    ImageFormat::Z_PIXMAP,
+                    pixmap,
+                    context,
+                    scr.width,
+                    scr.height,
+                    scr.x,
+                    scr.y,
+                    0,
+                    screen.root_depth,
+                    &image,
+                );
+            }
 
-                Ok::<(), WlrsError>(())
-            })?;
+            Ok::<(), WlrsError>(())
+        })?;
         conn.kill_client(Kill::ALL_TEMPORARY)?;
         conn.set_close_down_mode(CloseDown::RETAIN_TEMPORARY)?;
         ATOMS.iter().for_each(|atom| {

@@ -2,7 +2,28 @@ use fast_image_resize::{FilterType, PixelType, Resizer};
 use image::RgbImage;
 use std::num::NonZeroU32;
 
-use crate::error::WlrsError;
+use crate::{error::WlrsError, CropMode, WallpaperData};
+
+pub(crate) fn resize(wallpaper_data: &WallpaperData, size: [i32; 2]) -> Result<Vec<u8>, WlrsError> {
+    let image = &wallpaper_data.image;
+    let img = match wallpaper_data.crop_mode {
+        CropMode::Fit(color) => resize_image(
+            image,
+            size[0] as u32,
+            size[1] as u32,
+            color.unwrap_or([0, 0, 0]),
+        )?,
+        CropMode::No(color) => pad(
+            image,
+            size[0] as u32,
+            size[1] as u32,
+            color.unwrap_or([0, 0, 0]),
+        )?,
+        CropMode::Crop => crop_image(image, size[0] as u32, size[1] as u32)?,
+    };
+
+    Ok(img)
+}
 
 pub(crate) fn resize_image(
     image: &RgbImage,

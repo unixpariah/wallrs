@@ -1,6 +1,6 @@
 mod surface;
 
-use crate::{error::WlrsError, WallpaperData};
+use crate::{error::WlrsError, helpers::resize, WallpaperData};
 use rayon::prelude::*;
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
@@ -15,13 +15,13 @@ use smithay_client_toolkit::{
         },
         WaylandSurface,
     },
-    shm::{Shm, ShmHandler},
+    shm::{slot::SlotPool, Shm, ShmHandler},
 };
 use std::sync::mpsc;
 use surface::Surface;
 use wayland_client::{
     globals::{registry_queue_init, GlobalList},
-    protocol::{wl_output, wl_surface},
+    protocol::{wl_output, wl_shm, wl_surface},
     Connection, QueueHandle,
 };
 
@@ -81,6 +81,24 @@ impl CompositorHandler for Wlrs {
         _time: u32,
     ) {
     }
+
+    fn surface_enter(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _surface: &wl_surface::WlSurface,
+        _output: &wl_output::WlOutput,
+    ) {
+    }
+
+    fn surface_leave(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _surface: &wl_surface::WlSurface,
+        _output: &wl_output::WlOutput,
+    ) {
+    }
 }
 
 impl OutputHandler for Wlrs {
@@ -108,11 +126,25 @@ impl OutputHandler for Wlrs {
             layer.set_exclusive_zone(-1);
             layer.commit();
 
+            let (width, height) = (
+                output_info.logical_size.unwrap().0,
+                output_info.logical_size.unwrap().1,
+            );
+            let pool = SlotPool::new((width * height * 3) as usize, &self.shm).unwrap();
+
+            let pool = Box::leak(Box::new(pool));
+
+            let (buffer, canvas) = pool
+                .create_buffer(width, height, width * 3, wl_shm::Format::Bgr888)
+                .unwrap();
+
             self.surfaces.push(Surface {
                 layer_surface: layer,
                 output_info,
                 width: 0,
                 height: 0,
+                buffer,
+                canvas,
             });
         }
     }
@@ -181,33 +213,40 @@ pub fn wayland(
         .map_err(|_| WlrsError::WaylandError("Failed to insert listener".to_string()))?;
 
     loop {
-        if wlrs.surfaces.iter().any(|surface| surface.is_configured()) {
-            if let Ok(wallpaper) = rx.try_recv() {
-                let drawn = wlrs
-                    .surfaces
-                    .par_iter_mut()
-                    .enumerate()
-                    .map(|(index, surface)| {
-                        if surface.is_configured()
-                            && (wallpaper.outputs.contains(&index) || wallpaper.outputs.is_empty())
-                        {
-                            surface.draw(&wallpaper, &qh, &globals)?;
-                            return Ok::<bool, WlrsError>(true);
-                        }
-                        Ok(false)
-                    })
-                    .reduce_with(|a, b| match (a, b) {
-                        (Ok(a), Ok(b)) => Ok(a || b),
-                        (Err(e), _) | (_, Err(e)) => Err(e),
-                    })
-                    .unwrap_or(Ok(false))?;
+        event_loop.dispatch(None, &mut wlrs)?;
+        if !wlrs.surfaces.iter().any(|surface| surface.is_configured()) {
+            continue;
+        }
 
-                if drawn {
-                    tx.send(Ok(()))?;
-                }
+        if let Ok(wallpaper) = rx.try_recv() {
+            let drawn = wlrs
+                .surfaces
+                .par_iter_mut()
+                .map(|surface| {
+                    if surface.is_configured()
+                        && (wallpaper
+                            .outputs
+                            .contains(surface.output_info.name.as_ref().unwrap())
+                            || wallpaper.outputs.is_empty())
+                    {
+                        surface
+                            .canvas
+                            .copy_from_slice(&resize(&wallpaper, [surface.width, surface.height])?);
+                        surface.draw()?;
+                        return Ok::<bool, WlrsError>(true);
+                    }
+                    Ok(false)
+                })
+                .reduce_with(|a, b| match (a, b) {
+                    (Ok(a), Ok(b)) => Ok(a || b),
+                    (Err(e), _) | (_, Err(e)) => Err(e),
+                })
+                .unwrap_or(Ok(false))?;
+
+            if drawn {
+                tx.send(Ok(()))?;
             }
         }
-        event_loop.dispatch(None, &mut wlrs)?;
     }
 }
 
