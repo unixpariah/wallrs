@@ -4,28 +4,27 @@ mod wayland;
 mod x11;
 
 use crate::error::WlrsError;
-pub use image;
 use smithay_client_toolkit::reexports::calloop;
 use std::{
     env,
+    num::NonZeroU32,
     path::Path,
-    sync::{mpsc, Mutex},
+    sync::{mpsc, Arc, Mutex},
     thread,
 };
 use wayland::wayland;
 use x11::x11;
 
-#[derive(Clone)]
 pub(crate) struct WallpaperData {
-    image: image::RgbImage,
-    outputs: Vec<String>,
+    image_data: ImageData,
+    outputs: Arc<[String]>,
     crop_mode: CropMode,
 }
 
 impl WallpaperData {
-    fn new(image: image::RgbImage, outputs: Vec<String>, crop_mode: CropMode) -> Self {
+    fn new(image_data: ImageData, outputs: Arc<[String]>, crop_mode: CropMode) -> Self {
         Self {
-            image,
+            image_data,
             outputs,
             crop_mode,
         }
@@ -61,7 +60,6 @@ impl Channel {
     }
 }
 
-#[derive(Clone)]
 /// Tactic to use when resizing the image
 pub enum CropMode {
     /// Center the image and fill the remaining space with specified color, defaults to black
@@ -70,6 +68,52 @@ pub enum CropMode {
     Fit(Option<[u8; 3]>),
     /// Crop the image to fit the screen
     Crop,
+}
+
+/// Struct used to represent image
+#[derive(Clone)]
+pub struct ImageData {
+    data: Arc<[u8]>,
+    width: NonZeroU32,
+    height: NonZeroU32,
+}
+
+impl ImageData {
+    /// Creates ImageData if pixel format is correct
+    pub fn new(data: &[u8], width: NonZeroU32, height: NonZeroU32) -> Option<Self> {
+        if data.len() != (width.get() * height.get() * 3) as usize {
+            return None;
+        }
+
+        Some(Self {
+            data: data.into(),
+            width,
+            height,
+        })
+    }
+
+    /// # Safety
+    ///
+    /// Pixel format must be RGB
+    pub unsafe fn new_unchecked(data: &[u8], width: NonZeroU32, height: NonZeroU32) -> Self {
+        Self {
+            data: data.into(),
+            width,
+            height,
+        }
+    }
+
+    pub fn dimensions(&self) -> (u32, u32) {
+        (self.width.into(), self.height.into())
+    }
+
+    pub fn width(&self) -> u32 {
+        self.width.into()
+    }
+
+    pub fn height(&self) -> u32 {
+        self.height.into()
+    }
 }
 
 static CHANNEL: Mutex<Option<Channel>> = Mutex::new(None);
@@ -82,20 +126,26 @@ static CHANNEL: Mutex<Option<Channel>> = Mutex::new(None);
 /// use wlrs::{set_from_path, CropMode};
 ///
 /// // Set to single output
-/// set_from_path("path/to/image.png", vec!["eDP-1".to_string()], CropMode::Fit(None)).unwrap();
+/// set_from_path("path/to/image.png", &["eDP-1".to_string()], CropMode::Fit(None)).unwrap();
 ///
 /// // Set to multiple outputs
-/// set_from_path("path/to/image.png", vec!["eDP-1".to_string(), "HDMI-A-1".to_string()], CropMode::Fit(None)).unwrap();
+/// set_from_path("path/to/image.png", &["eDP-1".to_string(), "HDMI-A-1".to_string()], CropMode::Fit(None)).unwrap();
 ///
 /// // Set to all outputs
-/// set_from_path("path/to/image.png", Vec::new(), CropMode::Fit(None)).unwrap();
+/// set_from_path("path/to/image.png", &[], CropMode::Fit(None)).unwrap();
 /// ```
-pub fn set_from_path<T>(path: T, outputs: Vec<String>, crop_mode: CropMode) -> Result<(), WlrsError>
+pub fn set_from_path<T>(path: T, outputs: &[String], crop_mode: CropMode) -> Result<(), WlrsError>
 where
     T: AsRef<Path>,
 {
-    let image = image::open(path)?;
-    set_from_memory(image, outputs, crop_mode)?;
+    let image = image::open(path)?.to_rgb8();
+    let image_data = ImageData::new(
+        image.as_raw(),
+        NonZeroU32::new(image.width()).ok_or(WlrsError::SizeError("Image is of width 0"))?,
+        NonZeroU32::new(image.height()).ok_or(WlrsError::SizeError("Image is of height 0"))?,
+    )
+    .unwrap();
+    set_from_memory(image_data, outputs, crop_mode)?;
     Ok(())
 }
 
@@ -104,34 +154,26 @@ where
 /// # Example
 ///
 /// ```
-/// use image::RgbImage;
-/// use wlrs::{set_from_memory, CropMode};
+/// use wlrs::{set_from_memory, CropMode, ImageData};
+/// use std::num::NonZeroU32;
 ///
 /// // Set to single output
-/// let image = RgbImage::new(1920, 1080);
-/// set_from_memory(image, vec!["eDP-1".to_string()], CropMode::Fit(None)).unwrap();
+/// let image = ImageData::new(&[0; 1920 * 1080 * 3], NonZeroU32::new(1920).unwrap(), NonZeroU32::new(1080).unwrap()).unwrap();
+/// set_from_memory(image, &["eDP-1".to_string()], CropMode::Fit(None)).unwrap();
 ///
 /// // Set to multiple outputs
-/// let image = RgbImage::new(1920, 1080);
-/// set_from_memory(image, vec!["eDP-1".to_string(), "HDMI-A-1".to_string()], CropMode::Fit(None)).unwrap();
+/// let image = ImageData::new(&[0; 1920 * 1080 * 3], NonZeroU32::new(1920).unwrap(), NonZeroU32::new(1080).unwrap()).unwrap();
+/// set_from_memory(image, &["eDP-1".to_string(), "HDMI-A-1".to_string()], CropMode::Fit(None)).unwrap();
 ///
 /// // Set to all outputs
-/// let image = RgbImage::new(1920, 1080);
-/// set_from_memory(image, Vec::new(), CropMode::Fit(None)).unwrap();
+/// let image = ImageData::new(&[0; 1920 * 1080 * 3], NonZeroU32::new(1920).unwrap(), NonZeroU32::new(1080).unwrap()).unwrap();
+/// set_from_memory(image, &[], CropMode::Fit(None)).unwrap();
 /// ```
-pub fn set_from_memory<T>(
-    image: T,
-    outputs: Vec<String>,
+pub fn set_from_memory(
+    image_data: ImageData,
+    outputs: &[String],
     crop_mode: CropMode,
-) -> Result<(), WlrsError>
-where
-    T: Into<image::RgbImage>,
-{
-    let image = image.into();
-    if image.width() == 0 || image.height() == 0 {
-        return Err(WlrsError::SizeError("Empty image"));
-    }
-
+) -> Result<(), WlrsError> {
     let mut channel = CHANNEL.lock()?;
     if channel.is_none() {
         let (tx, rx) = mpsc::channel();
@@ -150,9 +192,8 @@ where
         });
     }
 
-    let wallpaper_data = WallpaperData::new(image, outputs, crop_mode);
+    let wallpaper_data = WallpaperData::new(image_data, outputs.into(), crop_mode);
 
-    // This is always Some at this point
     channel.as_ref().unwrap().send(wallpaper_data)?;
     match channel.as_ref().unwrap().get_reply() {
         Ok(()) => Ok(()),
@@ -160,5 +201,25 @@ where
             *channel = None;
             Err(e)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test() {
+        let img_data = ImageData::new(
+            &[0; 1080 * 1920 * 3],
+            NonZeroU32::new(1920).unwrap(),
+            NonZeroU32::new(1080).unwrap(),
+        );
+        assert!(img_data.is_some());
+        let img_data = img_data.unwrap();
+        assert_eq!(
+            img_data.data.len(),
+            (img_data.width() * img_data.height() * 3) as usize
+        );
     }
 }

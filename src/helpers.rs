@@ -2,68 +2,53 @@ use fast_image_resize::{FilterType, PixelType, Resizer};
 use image::RgbImage;
 use std::num::NonZeroU32;
 
-use crate::{error::WlrsError, CropMode, WallpaperData};
+use crate::{error::WlrsError, CropMode, ImageData, WallpaperData};
 
 pub(crate) fn resize(wallpaper_data: &WallpaperData, size: [i32; 2]) -> Result<Vec<u8>, WlrsError> {
-    let image = &wallpaper_data.image;
     let img = match wallpaper_data.crop_mode {
         CropMode::Fit(color) => resize_image(
-            image,
-            size[0] as u32,
-            size[1] as u32,
+            &wallpaper_data.image_data,
+            size.map(|x| x as u32),
             color.unwrap_or([0, 0, 0]),
         )?,
         CropMode::No(color) => pad(
-            image,
-            size[0] as u32,
-            size[1] as u32,
+            &wallpaper_data.image_data,
+            size.map(|x| x as u32),
             color.unwrap_or([0, 0, 0]),
         )?,
-        CropMode::Crop => crop_image(image, size[0] as u32, size[1] as u32)?,
+        CropMode::Crop => crop_image(&wallpaper_data.image_data, size.map(|x| x as u32))?,
     };
 
     Ok(img)
 }
 
 pub(crate) fn resize_image(
-    image: &RgbImage,
-    width: u32,
-    height: u32,
+    image_data: &ImageData,
+    size: [u32; 2],
     color: [u8; 3],
 ) -> Result<Vec<u8>, WlrsError> {
-    let (img_w, img_h) = image.dimensions();
-    let image = image.as_raw().to_vec();
-
-    if img_w == width && img_h == height {
-        return pad(
-            &image::RgbImage::from_raw(width, height, image).ok_or(WlrsError::CustomError(""))?,
-            width,
-            height,
-            color,
-        );
+    if image_data.width() == size[0] && image_data.height() == size[1] {
+        return pad(image_data, size, color);
     }
 
-    let ratio = width as f32 / height as f32;
-    let img_r = img_w as f32 / img_h as f32;
+    let ratio = size[0] as f32 / size[1] as f32;
+    let img_ratio = image_data.width() as f32 / image_data.height() as f32;
 
-    let (trg_w, trg_h) = if ratio > img_r {
-        let scale = height as f32 / img_h as f32;
-        ((img_w as f32 * scale) as u32, height)
+    let (trg_width, trg_height) = if ratio > img_ratio {
+        let scale = size[1] as f32 / image_data.height() as f32;
+        ((image_data.width() as f32 * scale) as u32, size[0])
     } else {
-        let scale = width as f32 / img_w as f32;
-        (width, (img_h as f32 * scale) as u32)
+        let scale = size[0] as f32 / image_data.width() as f32;
+        (size[0], (image_data.height() as f32 * scale) as u32)
     };
 
-    let trg_w = trg_w.min(width);
-    let trg_h = trg_h.min(height);
+    let trg_w = trg_width.min(size[0]);
+    let trg_h = trg_height.min(size[1]);
 
     let src = fast_image_resize::Image::from_vec_u8(
-        NonZeroU32::new(img_w)
-            .ok_or(WlrsError::SizeError("Width of image must be bigger than 0"))?,
-        NonZeroU32::new(img_h).ok_or(WlrsError::SizeError(
-            "Height of image must be bigger than 0",
-        ))?,
-        image,
+        image_data.width,
+        image_data.height,
+        image_data.data.to_vec(),
         PixelType::U8x3,
     )?;
 
@@ -81,30 +66,23 @@ pub(crate) fn resize_image(
 
     resizer.resize(&src.view(), &mut dst_view)?;
 
-    let dst = dst.into_vec();
-
     pad(
-        &image::RgbImage::from_raw(trg_w, trg_h, dst).ok_or(WlrsError::CustomError(""))?,
-        width,
-        height,
+        &ImageData::new(&dst.into_vec(), new_w, new_h).unwrap(),
+        size,
         color,
     )
 }
 
-pub(crate) fn pad(
-    img: &RgbImage,
-    trg_w: u32,
-    trg_h: u32,
-    color: [u8; 3],
-) -> Result<Vec<u8>, WlrsError> {
-    if img.dimensions() == (trg_w, trg_h) {
-        return Ok(img.to_vec());
+pub(crate) fn pad(img: &ImageData, size: [u32; 2], color: [u8; 3]) -> Result<Vec<u8>, WlrsError> {
+    if img.dimensions() == (size[0], size[1]) {
+        return Ok(img.data.to_vec());
     }
 
-    let (trg_w, trg_h) = (trg_w as usize, trg_h as usize);
+    let (trg_w, trg_h) = (size[0] as usize, size[1] as usize);
     let mut padded = Vec::with_capacity(trg_w * trg_h * 3);
 
-    let img = image::imageops::crop_imm(img, 0, 0, trg_w as u32, trg_h as u32).to_image();
+    let img = RgbImage::from_raw(img.width(), img.height(), img.data.to_vec()).unwrap();
+    let img = image::imageops::crop_imm(&img, 0, 0, trg_w as u32, trg_h as u32).to_image();
     let (img_w, img_h) = img.dimensions();
     let (img_w, img_h) = (img_w as usize, img_h as usize);
     let raw_img = img.into_vec();
@@ -149,22 +127,21 @@ pub(crate) fn pad(
     Ok(padded)
 }
 
-pub fn crop_image(img: &RgbImage, width: u32, height: u32) -> Result<Vec<u8>, WlrsError> {
-    if (img.width(), img.height()) == (width, height) {
-        return Ok(img.to_vec());
+pub fn crop_image(img: &ImageData, size: [u32; 2]) -> Result<Vec<u8>, WlrsError> {
+    if img.dimensions() == size.into() {
+        return Ok(img.data.to_vec());
     }
 
     let pixel_type = PixelType::U8x3;
     let src = fast_image_resize::Image::from_vec_u8(
-        NonZeroU32::new(img.width()).ok_or(WlrsError::SizeError("Empty image"))?,
-        NonZeroU32::new(img.height()).ok_or(WlrsError::SizeError("Empty image"))?,
-        img.to_vec(),
+        img.width,
+        img.height,
+        img.data.to_vec(),
         pixel_type,
     )?;
 
-    // We unwrap below because we know the outputs's dimensions should never be 0
-    let new_w = NonZeroU32::new(width).ok_or(WlrsError::SizeError("Empty image"))?;
-    let new_h = NonZeroU32::new(height).ok_or(WlrsError::SizeError("Empty image"))?;
+    let new_w = NonZeroU32::new(size[0]).ok_or(WlrsError::SizeError("Empty image"))?;
+    let new_h = NonZeroU32::new(size[1]).ok_or(WlrsError::SizeError("Empty image"))?;
     let mut src_view = src.view();
     src_view.set_crop_box_to_fit_dst_size(new_w, new_h, Some((0.5, 0.5)));
 
@@ -185,70 +162,127 @@ mod tests {
 
     #[test]
     fn test_resize_image() {
-        let img = image::RgbImage::new(1920, 1080);
-        let resized = resize_image(&img, 1920, 1080, [0, 0, 0]).unwrap();
+        let img = ImageData::new(
+            &[0; 1920 * 1080 * 3],
+            NonZeroU32::new(1920).unwrap(),
+            NonZeroU32::new(1080).unwrap(),
+        )
+        .unwrap();
+        let resized = resize_image(&img, img.dimensions().into(), [0, 0, 0]).unwrap();
+        assert_eq!(
+            resized.len(),
+            img.width() as usize * img.height() as usize * 3
+        );
+
+        let img = ImageData::new(
+            &[0; 500 * 1080 * 3],
+            NonZeroU32::new(500).unwrap(),
+            NonZeroU32::new(1080).unwrap(),
+        )
+        .unwrap();
+        let resized = resize_image(&img, [1920, img.height()], [0, 0, 0]).unwrap();
+        assert_eq!(resized.len(), 1920 * img.height() as usize * 3);
+
+        let img = ImageData::new(
+            &[0; 1920 * 500 * 3],
+            NonZeroU32::new(1920).unwrap(),
+            NonZeroU32::new(500).unwrap(),
+        )
+        .unwrap();
+        let resized = resize_image(&img, [img.width(), 1080], [0, 0, 0]).unwrap();
+        assert_eq!(resized.len(), img.width() as usize * 1080 * 3);
+
+        let img = ImageData::new(
+            &[0; 3840 * 2160 * 3],
+            NonZeroU32::new(3840).unwrap(),
+            NonZeroU32::new(2160).unwrap(),
+        )
+        .unwrap();
+        let resized = resize_image(&img, [1920, 1080], [0, 0, 0]).unwrap();
         assert_eq!(resized.len(), 1920 * 1080 * 3);
-
-        let img = image::RgbImage::new(500, 1080);
-        let resized = resize_image(&img, 1920, 1080, [0, 0, 0]).unwrap();
-        assert_eq!(resized.len(), 1920 * 1080 * 3);
-
-        let img = image::RgbImage::new(1920, 500);
-        let resized = resize_image(&img, 1920, 1080, [0, 0, 0]).unwrap();
-        assert_eq!(resized.len(), 1920 * 1080 * 3);
-
-        let img = image::RgbImage::new(1920, 0);
-        let resized = resize_image(&img, 1920, 1080, [0, 0, 0]);
-        assert!(resized.is_err());
-
-        let img = image::RgbImage::new(0, 1080);
-        let resized = resize_image(&img, 1920, 1080, [0, 0, 0]);
-        assert!(resized.is_err());
     }
 
     #[test]
     fn test_pad() {
-        let img = image::RgbImage::new(1920, 1080);
-        let padded = pad(&img, 1920, 1080, [0, 0, 0]).unwrap();
-        assert_eq!(padded.len(), 1920 * 1080 * 3);
+        let img = ImageData::new(
+            &[0; 1920 * 1080 * 3],
+            NonZeroU32::new(1920).unwrap(),
+            NonZeroU32::new(1080).unwrap(),
+        )
+        .unwrap();
+        let padded = pad(&img, img.dimensions().into(), [0, 0, 0]).unwrap();
+        assert_eq!(
+            padded.len(),
+            img.width() as usize * img.height() as usize * 3
+        );
 
-        let img = image::RgbImage::new(500, 1080);
-        let padded = pad(&img, 1920, 1080, [0, 0, 0]).unwrap();
-        assert_eq!(padded.len(), 1920 * 1080 * 3);
+        let img = ImageData::new(
+            &[0; 500 * 1080 * 3],
+            NonZeroU32::new(500).unwrap(),
+            NonZeroU32::new(1080).unwrap(),
+        )
+        .unwrap();
+        let padded = pad(&img, [1920, img.height()], [0, 0, 0]).unwrap();
+        assert_eq!(padded.len(), 1920 * img.height() as usize * 3);
 
-        let img = image::RgbImage::new(1920, 500);
-        let padded = pad(&img, 1920, 1080, [0, 0, 0]).unwrap();
-        assert_eq!(padded.len(), 1920 * 1080 * 3);
+        let img = ImageData::new(
+            &[0; 1920 * 500 * 3],
+            NonZeroU32::new(1920).unwrap(),
+            NonZeroU32::new(500).unwrap(),
+        )
+        .unwrap();
+        let padded = pad(&img, [img.width(), 1080], [0, 0, 0]).unwrap();
+        assert_eq!(padded.len(), img.width() as usize * 1080 * 3);
 
-        let img = image::RgbImage::new(1920, 0);
-        let padded = pad(&img, 1920, 1080, [0, 0, 0]);
-        assert!(padded.is_ok());
-
-        let img = image::RgbImage::new(0, 1080);
-        let padded = pad(&img, 1920, 1080, [0, 0, 0]);
-        assert!(padded.is_ok());
+        let img = ImageData::new(
+            &[0; 3840 * 2160 * 3],
+            NonZeroU32::new(3840).unwrap(),
+            NonZeroU32::new(2160).unwrap(),
+        )
+        .unwrap();
+        let resized = pad(&img, [1920, 1080], [0, 0, 0]).unwrap();
+        assert_eq!(resized.len(), 1920 * 1080 * 3);
     }
 
     #[test]
     fn test_crop_image() {
-        let img = image::RgbImage::new(1920, 1080);
-        let cropped = crop_image(&img, 1920, 1080).unwrap();
-        assert_eq!(cropped.len(), 1920 * 1080 * 3);
+        let img = ImageData::new(
+            &[0; 1920 * 1080 * 3],
+            NonZeroU32::new(1920).unwrap(),
+            NonZeroU32::new(1080).unwrap(),
+        )
+        .unwrap();
+        let cropped = crop_image(&img, img.dimensions().into()).unwrap();
+        assert_eq!(
+            cropped.len(),
+            img.width() as usize * img.height() as usize * 3
+        );
 
-        let img = image::RgbImage::new(500, 1080);
-        let cropped = crop_image(&img, 1920, 1080).unwrap();
-        assert_eq!(cropped.len(), 1920 * 1080 * 3);
+        let img = ImageData::new(
+            &[0; 500 * 1080 * 3],
+            NonZeroU32::new(500).unwrap(),
+            NonZeroU32::new(1080).unwrap(),
+        )
+        .unwrap();
+        let cropped = crop_image(&img, [1920, img.height()]).unwrap();
+        assert_eq!(cropped.len(), 1920 * img.height() as usize * 3);
 
-        let img = image::RgbImage::new(1920, 500);
-        let cropped = crop_image(&img, 1920, 1080).unwrap();
-        assert_eq!(cropped.len(), 1920 * 1080 * 3);
+        let img = ImageData::new(
+            &[0; 1920 * 500 * 3],
+            NonZeroU32::new(1920).unwrap(),
+            NonZeroU32::new(500).unwrap(),
+        )
+        .unwrap();
+        let cropped = crop_image(&img, [img.width(), 1080]).unwrap();
+        assert_eq!(cropped.len(), img.width() as usize * 1080 * 3);
 
-        let img = image::RgbImage::new(1920, 0);
-        let cropped = crop_image(&img, 1920, 1080);
-        assert!(cropped.is_err());
-
-        let img = image::RgbImage::new(0, 1080);
-        let cropped = crop_image(&img, 1920, 1080);
-        assert!(cropped.is_err());
+        let img = ImageData::new(
+            &[0; 3840 * 2160 * 3],
+            NonZeroU32::new(3840).unwrap(),
+            NonZeroU32::new(2160).unwrap(),
+        )
+        .unwrap();
+        let resized = crop_image(&img, [1920, 1080]).unwrap();
+        assert_eq!(resized.len(), 1920 * 1080 * 3);
     }
 }

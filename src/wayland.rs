@@ -181,11 +181,12 @@ impl LayerShellHandler for Wlrs {
         _configure: LayerSurfaceConfigure,
         _serial: u32,
     ) {
-        self.surfaces
+        let surface = self
+            .surfaces
             .iter_mut()
             .find(|surface| &surface.layer_surface == layer)
-            .unwrap()
-            .change_size();
+            .unwrap();
+        surface.change_size();
     }
 }
 

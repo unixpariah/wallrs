@@ -14,7 +14,7 @@ pub(crate) struct Surface {
 }
 
 impl Surface {
-    pub(crate) fn draw(&mut self) {
+    pub(crate) fn draw(&self) {
         let (width, height) = (self.width, self.height);
 
         let layer = &self.layer_surface;
