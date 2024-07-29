@@ -130,12 +130,12 @@ impl OutputHandler for Wlrs {
                 output_info.logical_size.unwrap().0,
                 output_info.logical_size.unwrap().1,
             );
-            let pool = SlotPool::new((width * height * 3) as usize, &self.shm).unwrap();
+            let pool = SlotPool::new((width * height * 4) as usize, &self.shm).unwrap();
 
             let pool = Box::leak(Box::new(pool));
 
             let (buffer, canvas) = pool
-                .create_buffer(width, height, width * 3, wl_shm::Format::Bgr888)
+                .create_buffer(width, height, width * 4, wl_shm::Format::Xbgr8888)
                 .unwrap();
 
             self.surfaces.push(Surface {
