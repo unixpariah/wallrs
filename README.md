@@ -16,17 +16,17 @@ use wlrs::{set_from_memory, CropMode, ImageData};
 fn main() {
   // Set to single output
   let wallpaper = image::open("wallpaper.jpg").unwrap();
-  let image_data = ImageData::new(&wallpaper.to_rgb8(), wallpaper.width(), wallpaper.height());
+  let image_data = ImageData::new(&wallpaper.to_rgba8(), wallpaper.width(), wallpaper.height());
   set_from_memory(wallpaper, vec!["eDP-1".to_string(), CropMode::Fit(None)]).unwrap();
 
   // Set to multiple outputs
   let wallpaper = image::open("wallpaper.jpg").unwrap();
-  let image_data = ImageData::new(&wallpaper.to_rgb8(), wallpaper.width(), wallpaper.height());
+  let image_data = ImageData::new(&wallpaper.to_rgba8(), wallpaper.width(), wallpaper.height());
   set_from_memory(wallpaper, vec!["eDP-1".to_string(), "HDMI-A-1".to_string(), CropMode::Fit(None)]).unwrap();
 
   // Set to all outputs
   let wallpaper = image::open("wallpaper.jpg").unwrap();
-  let image_data = ImageData::new(&wallpaper.to_rgb8(), wallpaper.width(), wallpaper.height());
+  let image_data = ImageData::new(&wallpaper.to_rgba8(), wallpaper.width(), wallpaper.height());
   set_from_memory(wallpaper, Vec::new(), CropMode::Fit(None)).unwrap();
 }
 ```

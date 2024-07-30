@@ -4,11 +4,11 @@ mod wayland;
 mod x11;
 
 use crate::error::WlrsError;
+use image::GenericImageView;
 use smithay_client_toolkit::reexports::calloop;
 use std::{
     env,
     num::NonZeroU32,
-    path::Path,
     sync::{mpsc, Arc},
     thread,
 };
@@ -16,13 +16,13 @@ use wayland::wayland;
 use x11::x11;
 
 pub(crate) struct WallpaperData {
-    image_data: ImageData,
+    image_data: Image,
     outputs: Arc<[String]>,
     crop_mode: CropMode,
 }
 
 impl WallpaperData {
-    fn new(image_data: ImageData, outputs: Arc<[String]>, crop_mode: CropMode) -> Self {
+    fn new(image_data: Image, outputs: Arc<[String]>, crop_mode: CropMode) -> Self {
         Self {
             image_data,
             outputs,
@@ -71,17 +71,16 @@ pub enum CropMode {
 }
 
 /// Struct used to represent image
-#[derive(Clone)]
-pub struct ImageData {
+pub struct Image {
     data: Arc<[u8]>,
     width: NonZeroU32,
     height: NonZeroU32,
 }
 
-impl ImageData {
+impl Image {
     /// Creates ImageData if pixel format is correct
     pub fn new(data: &[u8], width: NonZeroU32, height: NonZeroU32) -> Option<Self> {
-        if data.len() != (width.get() * height.get() * 3) as usize {
+        if data.len() != (width.get() * height.get() * 4) as usize {
             return None;
         }
 
@@ -94,7 +93,7 @@ impl ImageData {
 
     /// # Safety
     ///
-    /// Pixel format must be RGB
+    /// Pixel format must be RGBA
     pub unsafe fn new_unchecked(data: &[u8], width: NonZeroU32, height: NonZeroU32) -> Self {
         Self {
             data: data.into(),
@@ -116,9 +115,9 @@ impl ImageData {
     }
 }
 
-pub enum SetType<T: AsRef<Path>> {
-    Path(T),
-    Img(ImageData),
+pub enum SetType<'a> {
+    Path(&'a str),
+    Img(Image),
 }
 
 pub struct Wlrs {
@@ -145,26 +144,21 @@ impl Wlrs {
         Ok(Self { channel })
     }
 
-    pub fn set<T>(
+    pub fn set(
         &self,
-        set_type: SetType<T>,
+        set_type: SetType,
         outputs: &[String],
         crop_mode: CropMode,
-    ) -> Result<(), WlrsError>
-    where
-        T: AsRef<Path>,
-    {
+    ) -> Result<(), WlrsError> {
         let image_data = match set_type {
             SetType::Path(path) => {
-                let image = image::open(path)?.to_rgb8();
-                ImageData::new(
-                    image.as_raw(),
-                    NonZeroU32::new(image.width())
-                        .ok_or(WlrsError::SizeError("Image is of width 0"))?,
-                    NonZeroU32::new(image.height())
-                        .ok_or(WlrsError::SizeError("Image is of height 0"))?,
-                )
-                .unwrap()
+                let image = image::open(path)?.to_rgba8();
+                let width = NonZeroU32::new(image.width())
+                    .ok_or(WlrsError::SizeError("Image is of width 0"))?;
+                let height = NonZeroU32::new(image.height())
+                    .ok_or(WlrsError::SizeError("Image is of height 0"))?;
+
+                Image::new(image.as_raw(), width, height).unwrap()
             }
             SetType::Img(image) => image,
         };

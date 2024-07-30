@@ -13,8 +13,8 @@ categories = ["api-bindings"]
 [dependencies]
 fast_image_resize = "3.0.3"
 image =  "0.24.8"
-smithay-client-toolkit = { version = "0.19.1", default-features = false, features = ["calloop"] }
-wayland-client = { version = "0.31.2", default-features = false }
+smithay-client-toolkit = { version = "0.19.2", default-features = false, features = ["calloop"] }
+wayland-client = { version = "0.31.5", default-features = false }
 x11rb = { version = "0.13.0", features = ["randr"] }
 rayon = "1.10.0"
 
