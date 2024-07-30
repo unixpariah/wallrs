@@ -4,25 +4,25 @@ mod wayland;
 mod x11;
 
 use crate::error::WlrsError;
+use image::GenericImageView;
 use smithay_client_toolkit::reexports::calloop;
 use std::{
     env,
     num::NonZeroU32,
-    path::Path,
-    sync::{mpsc, Arc, Mutex},
+    sync::{mpsc, Arc},
     thread,
 };
 use wayland::wayland;
 use x11::x11;
 
 pub(crate) struct WallpaperData {
-    image_data: ImageData,
+    image_data: Image,
     outputs: Arc<[String]>,
     crop_mode: CropMode,
 }
 
 impl WallpaperData {
-    fn new(image_data: ImageData, outputs: Arc<[String]>, crop_mode: CropMode) -> Self {
+    fn new(image_data: Image, outputs: Arc<[String]>, crop_mode: CropMode) -> Self {
         Self {
             image_data,
             outputs,
@@ -71,17 +71,16 @@ pub enum CropMode {
 }
 
 /// Struct used to represent image
-#[derive(Clone)]
-pub struct ImageData {
+pub struct Image {
     data: Arc<[u8]>,
     width: NonZeroU32,
     height: NonZeroU32,
 }
 
-impl ImageData {
+impl Image {
     /// Creates ImageData if pixel format is correct
     pub fn new(data: &[u8], width: NonZeroU32, height: NonZeroU32) -> Option<Self> {
-        if data.len() != (width.get() * height.get() * 3) as usize {
+        if data.len() != (width.get() * height.get() * 4) as usize {
             return None;
         }
 
@@ -94,7 +93,7 @@ impl ImageData {
 
     /// # Safety
     ///
-    /// Pixel format must be RGB
+    /// Pixel format must be RGBA
     pub unsafe fn new_unchecked(data: &[u8], width: NonZeroU32, height: NonZeroU32) -> Self {
         Self {
             data: data.into(),
@@ -116,72 +115,23 @@ impl ImageData {
     }
 }
 
-static CHANNEL: Mutex<Option<Channel>> = Mutex::new(None);
-
-/// Set the wallpaper from a file path
-///
-/// # Example
-///
-/// ```no_run
-/// use wlrs::{set_from_path, CropMode};
-///
-/// // Set to single output
-/// set_from_path("path/to/image.png", &["eDP-1".to_string()], CropMode::Fit(None)).unwrap();
-///
-/// // Set to multiple outputs
-/// set_from_path("path/to/image.png", &["eDP-1".to_string(), "HDMI-A-1".to_string()], CropMode::Fit(None)).unwrap();
-///
-/// // Set to all outputs
-/// set_from_path("path/to/image.png", &[], CropMode::Fit(None)).unwrap();
-/// ```
-pub fn set_from_path<T>(path: T, outputs: &[String], crop_mode: CropMode) -> Result<(), WlrsError>
-where
-    T: AsRef<Path>,
-{
-    let image = image::open(path)?.to_rgb8();
-    let image_data = ImageData::new(
-        image.as_raw(),
-        NonZeroU32::new(image.width()).ok_or(WlrsError::SizeError("Image is of width 0"))?,
-        NonZeroU32::new(image.height()).ok_or(WlrsError::SizeError("Image is of height 0"))?,
-    )
-    .unwrap();
-    set_from_memory(image_data, outputs, crop_mode)?;
-    Ok(())
+pub enum SetType<'a> {
+    Path(&'a str),
+    Img(Image),
 }
 
-/// Set the wallpaper from a memory
-///
-/// # Example
-///
-/// ```
-/// use wlrs::{set_from_memory, CropMode, ImageData};
-/// use std::num::NonZeroU32;
-///
-/// // Set to single output
-/// let image = ImageData::new(&[0; 1920 * 1080 * 3], NonZeroU32::new(1920).unwrap(), NonZeroU32::new(1080).unwrap()).unwrap();
-/// set_from_memory(image, &["eDP-1".to_string()], CropMode::Fit(None)).unwrap();
-///
-/// // Set to multiple outputs
-/// let image = ImageData::new(&[0; 1920 * 1080 * 3], NonZeroU32::new(1920).unwrap(), NonZeroU32::new(1080).unwrap()).unwrap();
-/// set_from_memory(image, &["eDP-1".to_string(), "HDMI-A-1".to_string()], CropMode::Fit(None)).unwrap();
-///
-/// // Set to all outputs
-/// let image = ImageData::new(&[0; 1920 * 1080 * 3], NonZeroU32::new(1920).unwrap(), NonZeroU32::new(1080).unwrap()).unwrap();
-/// set_from_memory(image, &[], CropMode::Fit(None)).unwrap();
-/// ```
-pub fn set_from_memory(
-    image_data: ImageData,
-    outputs: &[String],
-    crop_mode: CropMode,
-) -> Result<(), WlrsError> {
-    let mut channel = CHANNEL.lock()?;
-    if channel.is_none() {
+pub struct Wlrs {
+    channel: Channel,
+}
+
+impl Wlrs {
+    pub fn new() -> Result<Self, WlrsError> {
         let (tx, rx) = mpsc::channel();
         let (res_tx, res_rx) = mpsc::channel();
 
         let (ping, ping_source) = calloop::ping::make_ping().unwrap();
 
-        *channel = Some(Channel::new(tx, res_rx, ping));
+        let channel = Channel::new(tx, res_rx, ping);
         thread::spawn(move || {
             let error = match (env::var("WAYLAND_DISPLAY"), env::var("DISPLAY")) {
                 (Ok(_), _) => wayland(rx, res_tx.clone(), ping_source),
@@ -190,36 +140,31 @@ pub fn set_from_memory(
             };
             _ = res_tx.send(error);
         });
+
+        Ok(Self { channel })
     }
 
-    let wallpaper_data = WallpaperData::new(image_data, outputs.into(), crop_mode);
+    pub fn set(
+        &self,
+        set_type: SetType,
+        outputs: &[String],
+        crop_mode: CropMode,
+    ) -> Result<(), WlrsError> {
+        let image_data = match set_type {
+            SetType::Path(path) => {
+                let image = image::open(path)?.to_rgba8();
+                let width = NonZeroU32::new(image.width())
+                    .ok_or(WlrsError::SizeError("Image is of width 0"))?;
+                let height = NonZeroU32::new(image.height())
+                    .ok_or(WlrsError::SizeError("Image is of height 0"))?;
 
-    channel.as_ref().unwrap().send(wallpaper_data)?;
-    match channel.as_ref().unwrap().get_reply() {
-        Ok(()) => Ok(()),
-        Err(e) => {
-            *channel = None;
-            Err(e)
-        }
-    }
-}
+                Image::new(image.as_raw(), width, height).unwrap()
+            }
+            SetType::Img(image) => image,
+        };
+        let wallpaper_data = WallpaperData::new(image_data, outputs.into(), crop_mode);
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test() {
-        let img_data = ImageData::new(
-            &[0; 1080 * 1920 * 3],
-            NonZeroU32::new(1920).unwrap(),
-            NonZeroU32::new(1080).unwrap(),
-        );
-        assert!(img_data.is_some());
-        let img_data = img_data.unwrap();
-        assert_eq!(
-            img_data.data.len(),
-            (img_data.width() * img_data.height() * 3) as usize
-        );
+        self.channel.send(wallpaper_data)?;
+        self.channel.get_reply()
     }
 }

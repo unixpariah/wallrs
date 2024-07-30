@@ -84,7 +84,7 @@ pub fn x11(
         let wallpaper_data = rx.recv()?;
         screens.par_iter().try_for_each(|scr| {
             if wallpaper_data.outputs.contains(&scr.name) || wallpaper_data.outputs.is_empty() {
-                let image = resize(&wallpaper_data, [width as i32, height as i32]).unwrap();
+                let image = resize(&wallpaper_data, [width as i32, height as i32])?;
                 let _ = conn.put_image(
                     ImageFormat::Z_PIXMAP,
                     pixmap,
